@@ -110,18 +110,17 @@ data class GridColumn<T>(
     val id: String,
     val heading: String,
     val width: Dp,
-    val filterable: Boolean = true,
+    val filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     val sortable: Boolean = false,
     val align: TextAlign = TextAlign.Start,
     val content: (@Composable (T) -> Unit)? = null,
-    val filterContent: (@Composable (current: String, onChange: (String) -> Unit) -> Unit)? = null,
     val value: (T) -> String,
 )
 ```
 
 - `width` is a **base** width — columns grow proportionally to fill any extra space when the grid is wider than the sum of all column widths; otherwise the grid scrolls horizontally.
 - `value` renders as plain text by default; pass `content` for anything custom (a switch, an icon, a multi-line cell).
-- `filterContent` replaces the default text box in the filter row — see `ChoiceFilterCell`/`MultiChoiceFilterCell` below, or write your own.
+- `filter` picks what the filter-row box looks like — see [`ExcelComposeFilter`](#excelcomposefilter) below.
 
 #### `ExcelGridColors` / `ExcelGridDefaults`
 
@@ -142,13 +141,38 @@ No `CompositionLocal` — just pass an `ExcelGridColors` in. `ExcelGridDefaults.
 ExcelGridDefaults.colors(containerColor = MyBrand.background, selectedRowContainerColor = MyBrand.accent)
 ```
 
-#### Filter cells
+#### `ExcelComposeFilter`
 
-`ChoiceFilterCell(current, options, onChange)` — single-choice dropdown; `options` are `(value, label)` pairs, the first meaning "all".
+A typed, discoverable choice for a column's `filter` — instead of a loose `filterable: Boolean` + nullable `@Composable` lambda pair, pick a named case:
 
-`MultiChoiceFilterCell(current, options, allLabel, onChange)` — multi-choice dropdown; selection is carried as a comma-separated string in the filter map.
+```kotlin
+sealed interface ExcelComposeFilter {
+    data object NoFilter : ExcelComposeFilter
+    data object TextFilter : ExcelComposeFilter
+    data class ChoiceFilter(val options: List<Pair<String, String>>) : ExcelComposeFilter
+    data class MultiChoiceFilter(val options: List<Pair<String, String>>, val allLabel: String) : ExcelComposeFilter
+    data class CustomFilter(val content: @Composable (current: String, onChange: (String) -> Unit) -> Unit) : ExcelComposeFilter
+}
+```
 
-Both are plain composables — pass them (or your own) as a `GridColumn`'s `filterContent`.
+| Case | What you get |
+|---|---|
+| `NoFilter` | No box at all for this column. |
+| `TextFilter` | A plain text box — the default when `filter` isn't specified. |
+| `ChoiceFilter(options)` | Single-choice dropdown; `options` are `(value, label)` pairs, the first meaning "all". |
+| `MultiChoiceFilter(options, allLabel)` | Multi-choice dropdown; selection is carried as a comma-separated string in the filter map. |
+| `CustomFilter(content)` | Escape hatch — any composable you write yourself, for anything the built-in cases don't cover. |
+
+```kotlin
+GridColumn(
+    "department", "Department", 160.dp, value = { it.department },
+    filter = ExcelComposeFilter.ChoiceFilter(
+        listOf("" to "All", "Engineering" to "Engineering", "Research" to "Research"),
+    ),
+)
+```
+
+`ChoiceFilterCell`/`MultiChoiceFilterCell` (the composables backing `ChoiceFilter`/`MultiChoiceFilter`) are also exported directly, in case you want to reuse them outside of a `GridColumn`.
 
 #### Tap behavior
 
@@ -272,18 +296,17 @@ data class GridColumn<T>(
     val id: String,
     val heading: String,
     val width: Dp,
-    val filterable: Boolean = true,
+    val filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     val sortable: Boolean = false,
     val align: TextAlign = TextAlign.Start,
     val content: (@Composable (T) -> Unit)? = null,
-    val filterContent: (@Composable (current: String, onChange: (String) -> Unit) -> Unit)? = null,
     val value: (T) -> String,
 )
 ```
 
 - `width` bir **taban** genişliktir — grid, tüm kolon genişlikleri toplamından daha genişse kolonlar orantılı olarak büyüyerek boşluğu doldurur; aksi halde grid yatay kayar.
 - `value` varsayılan olarak düz metin çizer; özel bir şey (switch, ikon, çok satırlı hücre) için `content` ver.
-- `filterContent`, filtre satırındaki varsayılan metin kutusunun yerine geçer — aşağıdaki `ChoiceFilterCell`/`MultiChoiceFilterCell`'e bak, ya da kendi bileşenini yaz.
+- `filter`, filtre satırındaki kutunun neye benzeyeceğini seçer — aşağıdaki [`ExcelComposeFilter`](#excelcomposefilter-1)'e bak.
 
 #### `ExcelGridColors` / `ExcelGridDefaults`
 
@@ -304,13 +327,38 @@ data class ExcelGridColors(
 ExcelGridDefaults.colors(containerColor = MarkamRengim.zemin, selectedRowContainerColor = MarkamRengim.vurgu)
 ```
 
-#### Filtre hücreleri
+#### `ExcelComposeFilter`
 
-`ChoiceFilterCell(current, options, onChange)` — tek seçimli açılır liste; `options` `(değer, etiket)` çiftleri, ilki "hepsi" anlamına gelir.
+Bir kolonun `filter`'ı için tip-güvenli, keşfedilebilir bir seçim — gevşek bir `filterable: Boolean` + nullable `@Composable` lambda ikilisi yerine, isimli bir case seçiyorsun:
 
-`MultiChoiceFilterCell(current, options, allLabel, onChange)` — çoklu seçim açılır liste; seçim filtre haritasında virgülle ayrılmış bir metin olarak taşınır.
+```kotlin
+sealed interface ExcelComposeFilter {
+    data object NoFilter : ExcelComposeFilter
+    data object TextFilter : ExcelComposeFilter
+    data class ChoiceFilter(val options: List<Pair<String, String>>) : ExcelComposeFilter
+    data class MultiChoiceFilter(val options: List<Pair<String, String>>, val allLabel: String) : ExcelComposeFilter
+    data class CustomFilter(val content: @Composable (current: String, onChange: (String) -> Unit) -> Unit) : ExcelComposeFilter
+}
+```
 
-İkisi de düz composable — bir `GridColumn`'ın `filterContent`'ine (ya da kendi yazdığına) geçirirsin.
+| Case | Ne verir |
+|---|---|
+| `NoFilter` | Bu kolon için hiç kutu yok. |
+| `TextFilter` | Düz metin kutusu — `filter` belirtilmezse varsayılan. |
+| `ChoiceFilter(options)` | Tek seçimli açılır liste; `options` `(değer, etiket)` çiftleri, ilki "hepsi" anlamına gelir. |
+| `MultiChoiceFilter(options, allLabel)` | Çoklu seçim açılır liste; seçim filtre haritasında virgülle ayrılmış bir metin olarak taşınır. |
+| `CustomFilter(content)` | Kaçış kapısı — hazır case'lerin karşılamadığı her şey için kendi yazdığın composable. |
+
+```kotlin
+GridColumn(
+    "bolge", "Bölge", 160.dp, value = { it.bolge },
+    filter = ExcelComposeFilter.ChoiceFilter(
+        listOf("" to "Hepsi", "Bornova" to "Bornova", "Kemalpaşa" to "Kemalpaşa"),
+    ),
+)
+```
+
+`ChoiceFilterCell`/`MultiChoiceFilterCell` (`ChoiceFilter`/`MultiChoiceFilter`'ın arkasındaki composable'lar) doğrudan da dışa açık — bir `GridColumn` dışında tekrar kullanmak istersen.
 
 #### Dokunma davranışı
 

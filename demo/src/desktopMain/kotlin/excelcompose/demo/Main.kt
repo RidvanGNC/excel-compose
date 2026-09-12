@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import excelcompose.grid.DataGrid
+import excelcompose.grid.ExcelComposeFilter
 import excelcompose.grid.ExcelGridDefaults
 import excelcompose.grid.GridColumn
 
@@ -54,7 +55,12 @@ private fun DemoScreen() {
     val columns = remember {
         listOf(
             GridColumn<Employee>("name", "Name", 200.dp, sortable = true, value = { it.name }),
-            GridColumn("department", "Department", 160.dp, value = { it.department }),
+            GridColumn(
+                "department", "Department", 160.dp, value = { it.department },
+                filter = ExcelComposeFilter.ChoiceFilter(
+                    listOf("" to "All", "Engineering" to "Engineering", "Research" to "Research", "R&D" to "R&D"),
+                ),
+            ),
             GridColumn("salary", "Salary", 120.dp, sortable = true, value = { it.salary.toString() }),
         )
     }

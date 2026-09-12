@@ -10,17 +10,16 @@ import androidx.compose.ui.unit.Dp
  * @param width base (minimum) width; columns grow proportionally to fill extra
  * space when the grid is wider than the sum of all column widths.
  * @param content custom composable for the cell body, replacing the default text.
+ * @param filter what the filter-row box looks like for this column — see [ExcelComposeFilter].
  */
 data class GridColumn<T>(
     val id: String,
     val heading: String,
     val width: Dp,
-    val filterable: Boolean = true,
+    val filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     /** Clicking the header sorts by this column (ascending/descending). */
     val sortable: Boolean = false,
     val align: TextAlign = TextAlign.Start,
     val content: (@Composable (T) -> Unit)? = null,
-    /** Custom filter row content (e.g. a dropdown); defaults to a plain text box. */
-    val filterContent: (@Composable (current: String, onChange: (String) -> Unit) -> Unit)? = null,
     val value: (T) -> String,
 )

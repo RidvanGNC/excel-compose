@@ -281,12 +281,10 @@ fun <T> DataGrid(
             ) {
                 if (selectable) Box(Modifier.width(SELECTION_COLUMN_WIDTH))
                 columns.forEachIndexed { i, c ->
-                    if (c.filterContent != null) {
-                        Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
-                            c.filterContent.invoke(filters[c.id].orEmpty()) { v -> onFilter(c.id, v) }
-                        }
-                    } else if (c.filterable) {
-                        Box(
+                    when (val f = c.filter) {
+                        is ExcelComposeFilter.NoFilter -> Box(Modifier.width(effective[i]))
+
+                        is ExcelComposeFilter.TextFilter -> Box(
                             Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 4.dp)
                                 .background(MaterialTheme.colorScheme.surface),
                         ) {
@@ -301,8 +299,18 @@ fun <T> DataGrid(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
                             )
                         }
-                    } else {
-                        Box(Modifier.width(effective[i]))
+
+                        is ExcelComposeFilter.ChoiceFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                            ChoiceFilterCell(filters[c.id].orEmpty(), f.options) { v -> onFilter(c.id, v) }
+                        }
+
+                        is ExcelComposeFilter.MultiChoiceFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                            MultiChoiceFilterCell(filters[c.id].orEmpty(), f.options, f.allLabel) { v -> onFilter(c.id, v) }
+                        }
+
+                        is ExcelComposeFilter.CustomFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                            f.content(filters[c.id].orEmpty()) { v -> onFilter(c.id, v) }
+                        }
                     }
                 }
             }

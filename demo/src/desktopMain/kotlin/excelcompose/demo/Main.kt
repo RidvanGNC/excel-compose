@@ -16,7 +16,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import excelcompose.grid.DataGrid
+import excelcompose.grid.ExcelComposeCell
 import excelcompose.grid.ExcelComposeFilter
 import excelcompose.grid.ExcelGridDefaults
 import excelcompose.grid.GridColumn
@@ -61,7 +64,18 @@ private fun DemoScreen() {
                     listOf("" to "All", "Engineering" to "Engineering", "Research" to "Research", "R&D" to "R&D"),
                 ),
             ),
-            GridColumn("salary", "Salary", 120.dp, sortable = true, value = { it.salary.toString() }),
+            GridColumn(
+                id = "salary", heading = "Salary", width = 120.dp, sortable = true,
+                // CustomCell example: a star next to well-paid rows, still plain text otherwise.
+                cell = ExcelComposeCell.CustomCell<Employee> { emp ->
+                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(emp.salary.toString(), style = MaterialTheme.typography.bodySmall)
+                        if (emp.salary >= 95000) {
+                            Text(" ★", color = Color(0xFFB8860B), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                },
+            ),
         )
     }
 

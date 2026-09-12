@@ -110,17 +110,47 @@ data class GridColumn<T>(
     val id: String,
     val heading: String,
     val width: Dp,
+    val cell: ExcelComposeCell<T>,
     val filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     val sortable: Boolean = false,
     val align: TextAlign = TextAlign.Start,
-    val content: (@Composable (T) -> Unit)? = null,
-    val value: (T) -> String,
 )
+
+// Convenience constructor for the common case — plain text, no need to wrap it yourself:
+fun <T> GridColumn(
+    id: String, heading: String, width: Dp,
+    filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
+    sortable: Boolean = false, align: TextAlign = TextAlign.Start,
+    value: (T) -> String,
+): GridColumn<T>
 ```
 
 - `width` is a **base** width — columns grow proportionally to fill any extra space when the grid is wider than the sum of all column widths; otherwise the grid scrolls horizontally.
-- `value` renders as plain text by default; pass `content` for anything custom (a switch, an icon, a multi-line cell).
+- `cell` picks what the cell body renders — see [`ExcelComposeCell`](#excelcomposecell) below. Most columns just pass `value = { ... }` and never touch `cell` directly; that goes through the convenience constructor.
 - `filter` picks what the filter-row box looks like — see [`ExcelComposeFilter`](#excelcomposefilter) below.
+
+#### `ExcelComposeCell`
+
+A typed alternative to a loose `value: (T) -> String` + nullable `content: @Composable (T) -> Unit` pair, same spirit as `ExcelComposeFilter`:
+
+```kotlin
+sealed interface ExcelComposeCell<T> {
+    data class TextCell<T>(val value: (T) -> String) : ExcelComposeCell<T>
+    data class CustomCell<T>(val content: @Composable (T) -> Unit) : ExcelComposeCell<T>
+}
+```
+
+```kotlin
+GridColumn(
+    id = "salary", heading = "Salary", width = 120.dp,
+    cell = ExcelComposeCell.CustomCell { employee ->
+        Row {
+            Text(employee.salary.toString())
+            if (employee.salary >= 95000) Text(" ★", color = Color(0xFFB8860B))
+        }
+    },
+)
+```
 
 #### `ExcelGridColors` / `ExcelGridDefaults`
 
@@ -296,17 +326,47 @@ data class GridColumn<T>(
     val id: String,
     val heading: String,
     val width: Dp,
+    val cell: ExcelComposeCell<T>,
     val filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     val sortable: Boolean = false,
     val align: TextAlign = TextAlign.Start,
-    val content: (@Composable (T) -> Unit)? = null,
-    val value: (T) -> String,
 )
+
+// Yaygın durum için kolaylık constructor'ı — düz metin, kendin sarmalamana gerek yok:
+fun <T> GridColumn(
+    id: String, heading: String, width: Dp,
+    filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
+    sortable: Boolean = false, align: TextAlign = TextAlign.Start,
+    value: (T) -> String,
+): GridColumn<T>
 ```
 
 - `width` bir **taban** genişliktir — grid, tüm kolon genişlikleri toplamından daha genişse kolonlar orantılı olarak büyüyerek boşluğu doldurur; aksi halde grid yatay kayar.
-- `value` varsayılan olarak düz metin çizer; özel bir şey (switch, ikon, çok satırlı hücre) için `content` ver.
+- `cell`, hücre gövdesinin neyi çizeceğini seçer — aşağıdaki [`ExcelComposeCell`](#excelcomposecell-1)'e bak. Çoğu kolon sadece `value = { ... }` verir, `cell`'e hiç dokunmaz — bu, kolaylık constructor'ından geçer.
 - `filter`, filtre satırındaki kutunun neye benzeyeceğini seçer — aşağıdaki [`ExcelComposeFilter`](#excelcomposefilter-1)'e bak.
+
+#### `ExcelComposeCell`
+
+Gevşek bir `value: (T) -> String` + nullable `content: @Composable (T) -> Unit` ikilisine tipli bir alternatif, `ExcelComposeFilter` ile aynı ruhta:
+
+```kotlin
+sealed interface ExcelComposeCell<T> {
+    data class TextCell<T>(val value: (T) -> String) : ExcelComposeCell<T>
+    data class CustomCell<T>(val content: @Composable (T) -> Unit) : ExcelComposeCell<T>
+}
+```
+
+```kotlin
+GridColumn(
+    id = "maas", heading = "Maaş", width = 120.dp,
+    cell = ExcelComposeCell.CustomCell { calisan ->
+        Row {
+            Text(calisan.maas.toString())
+            if (calisan.maas >= 95000) Text(" ★", color = Color(0xFFB8860B))
+        }
+    },
+)
+```
 
 #### `ExcelGridColors` / `ExcelGridDefaults`
 

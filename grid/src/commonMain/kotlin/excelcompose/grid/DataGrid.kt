@@ -367,12 +367,10 @@ fun <T> DataGrid(
                                 }
                                 columns.forEachIndexed { i, c ->
                                     Box(Modifier.width(effective[i]).padding(horizontal = 8.dp)) {
-                                        val custom = c.content
-                                        if (custom != null) {
-                                            custom(row)
-                                        } else {
-                                            Text(
-                                                c.value(row),
+                                        when (val cell = c.cell) {
+                                            is ExcelComposeCell.CustomCell -> cell.content(row)
+                                            is ExcelComposeCell.TextCell -> Text(
+                                                cell.value(row),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 textAlign = c.align,
                                                 maxLines = 1,

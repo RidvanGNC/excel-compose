@@ -84,6 +84,32 @@ DataGrid(
 
 See [`demo/`](demo) for a complete, runnable example (`./gradlew :demo:run`).
 
+### Demo
+
+#### Column resizing
+
+Drag any header border to resize a column, like Excel — only the column you're dragging changes size, the rest hold steady.
+
+<video src="video/column-resize.mp4" controls width="700"></video>
+
+#### Sorting
+
+Click a sortable header to sort ascending/descending; the indicator (▴ ▾ ↕) shows the current state.
+
+<video src="video/sorting.mp4" controls width="700"></video>
+
+#### Filtering
+
+Type in a column's filter box, or use a dropdown (`ChoiceFilter`/`MultiChoiceFilter`) for a fixed set of values.
+
+<video src="video/filtering.mp4" controls width="700"></video>
+
+#### Row selection
+
+An optional leading checkbox column with a tri-state "select all" in the header.
+
+<video src="video/row-selection.mp4" controls width="700"></video>
+
 ### API reference
 
 #### `DataGrid<T>`
@@ -299,6 +325,32 @@ DataGrid(
 ```
 
 Tam, çalıştırılabilir bir örnek için [`demo/`](demo)'ya bak (`./gradlew :demo:run`).
+
+### Demo
+
+#### Kolon boyutlandırma
+
+Excel'deki gibi herhangi bir başlık sınırını sürükleyerek kolonu boyutlandır — sadece sürüklediğin kolon değişir, diğerleri yerinde kalır.
+
+<video src="video/column-resize.mp4" controls width="700"></video>
+
+#### Sıralama
+
+Sıralanabilir bir başlığa tıkla, artan/azalan sıralanır; gösterge (▴ ▾ ↕) o anki durumu gösterir.
+
+<video src="video/sorting.mp4" controls width="700"></video>
+
+#### Filtreleme
+
+Bir kolonun filtre kutusuna yaz, ya da sabit bir değer kümesi için açılır liste (`ChoiceFilter`/`MultiChoiceFilter`) kullan.
+
+<video src="video/filtering.mp4" controls width="700"></video>
+
+#### Satır seçimi
+
+Başlıkta üç durumlu "hepsini seç" içeren opsiyonel, sol başta bir checkbox kolonu.
+
+<video src="video/row-selection.mp4" controls width="700"></video>
 
 ### API referansı
 

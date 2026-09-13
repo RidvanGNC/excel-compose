@@ -241,7 +241,7 @@ fun <T> DataGrid(
                         val active = sortId == c.id
                         Row(
                             Modifier.width(effective[i]).fillMaxHeight()
-                                .then(if (canSort) Modifier.clickable { onSort!!(c.id) } else Modifier)
+                                .then(if (canSort) Modifier.clickable { onSort(c.id) } else Modifier)
                                 .padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

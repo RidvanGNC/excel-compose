@@ -12,6 +12,12 @@ An Excel-style dense data grid for <a href="https://www.jetbrains.com/lp/compose
 </p>
 
 <p align="center">
+<img alt="Kotlin Multiplatform" src="https://img.shields.io/badge/Kotlin-Multiplatform-7F52FF?logo=kotlin&logoColor=white">
+<img alt="Android" src="https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white">
+<img alt="Desktop" src="https://img.shields.io/badge/Desktop-4D5B9E?logo=jetpackcompose&logoColor=white">
+</p>
+
+<p align="center">
 <a href="#english">English</a> · <a href="#türkçe">Türkçe</a>
 </p>
 

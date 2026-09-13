@@ -129,6 +129,7 @@ The grid itself. All parameters have defaults except `columns`, `rows`, and `key
 | `onSelectAll` | `(selectAll: Boolean) -> Unit` | The header checkbox was clicked. |
 | `filters` | `Map<String, String>` | Current filter text per column id. |
 | `onFilter` | `(columnId, value) -> Unit` | A filter box changed. |
+| `filterRowEnabled` | `Boolean` | Whether the column-filter row renders at all. `true` by default; `false` omits it entirely (not just hides it) and the body takes up that space. |
 | `loading` / `loadingNextPage` | `Boolean` | `loading` hides the empty-state text while true; `loadingNextPage` shows a spinner row at the bottom. |
 | `onRowOpen` | `(T) -> Unit` | Double-click (or single-click if `openOnSingleTap`) on a row. |
 | `onRowTap` | `((row: T, isDoubleTap: Boolean) -> Unit)?` | Escape hatch — fires on every tap *alongside* whatever `onSelect`/`onRowOpen` already do, so you can layer your own behavior without forking the grid. |
@@ -371,6 +372,7 @@ Grid'in kendisi. `columns`, `rows`, `key` dışındaki tüm parametrelerin varsa
 | `onSelectAll` | `(selectAll: Boolean) -> Unit` | Başlıktaki checkbox'a tıklandı. |
 | `filters` | `Map<String, String>` | Her kolon için o anki filtre metni. |
 | `onFilter` | `(columnId, value) -> Unit` | Bir filtre kutusu değişti. |
+| `filterRowEnabled` | `Boolean` | Filtre satırının hiç gözüküp gözükmeyeceği. Varsayılan `true`; `false` iken satır tamamen kaldırılır (yalnız gizlenmez) ve gövde o alanı kaplar. |
 | `loading` / `loadingNextPage` | `Boolean` | `loading` true iken boş-durum metnini gizler; `loadingNextPage` altta bir spinner satırı gösterir. |
 | `onRowOpen` | `(T) -> Unit` | Bir satıra çift tıklama (ya da `openOnSingleTap` açıksa tek tıklama). |
 | `onRowTap` | `((row: T, isDoubleTap: Boolean) -> Unit)?` | Kaçış kapısı — `onSelect`/`onRowOpen`'ın yaptığının **yanında**, her dokunuşta tetiklenir; grid'i çatallamadan kendi davranışını ekleyebilirsin. |

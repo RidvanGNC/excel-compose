@@ -98,6 +98,9 @@ fun <T> DataGrid(
     onSelectAll: (selectAll: Boolean) -> Unit = {},
     filters: Map<String, String> = emptyMap(),
     onFilter: (columnId: String, value: String) -> Unit = { _, _ -> },
+    /** Whether the column-filter row renders at all. When false, the row is omitted entirely
+     * (not just hidden) and the body takes up that vertical space. */
+    filterRowEnabled: Boolean = true,
     /** Color of the default filter-icon glyph — ignored if [filterTrailingIcon] is overridden. */
     filterIconColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     /** Size of the default filter-icon glyph — ignored if [filterTrailingIcon] is overridden. */
@@ -284,50 +287,52 @@ fun <T> DataGrid(
             }
 
             // filter row
-            Row(
-                Modifier.horizontalScroll(hScroll).width(totalWidth)
-                    .background(colors.filterContainerColor)
-                    .height(FILTER_ROW_HEIGHT)
-                    .drawBehind { gridLines(lineWidths, colors.lineColor) },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (selectable) Box(Modifier.width(SELECTION_COLUMN_WIDTH))
-                columns.forEachIndexed { i, c ->
-                    when (val f = c.filter) {
-                        is ExcelComposeFilter.NoFilter -> Box(Modifier.width(effective[i]))
+            if (filterRowEnabled) {
+                Row(
+                    Modifier.horizontalScroll(hScroll).width(totalWidth)
+                        .background(colors.filterContainerColor)
+                        .height(FILTER_ROW_HEIGHT)
+                        .drawBehind { gridLines(lineWidths, colors.lineColor) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (selectable) Box(Modifier.width(SELECTION_COLUMN_WIDTH))
+                    columns.forEachIndexed { i, c ->
+                        when (val f = c.filter) {
+                            is ExcelComposeFilter.NoFilter -> Box(Modifier.width(effective[i]))
 
-                        is ExcelComposeFilter.TextFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .border(1.dp, colors.filterBorderColor, RoundedCornerShape(4.dp))
-                                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                BasicTextField(
-                                    value = filters[c.id].orEmpty(),
-                                    onValueChange = { onFilter(c.id, it) },
-                                    singleLine = true,
-                                    textStyle = MaterialTheme.typography.bodySmall.copy(
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                    ),
-                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                    modifier = Modifier.weight(1f),
-                                )
-                                filterTrailingIcon()
+                            is ExcelComposeFilter.TextFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .border(1.dp, colors.filterBorderColor, RoundedCornerShape(4.dp))
+                                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    BasicTextField(
+                                        value = filters[c.id].orEmpty(),
+                                        onValueChange = { onFilter(c.id, it) },
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodySmall.copy(
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                        ),
+                                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    filterTrailingIcon()
+                                }
                             }
-                        }
 
-                        is ExcelComposeFilter.ChoiceFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
-                            ChoiceFilterCell(filters[c.id].orEmpty(), f.options, colors.filterBorderColor) { v -> onFilter(c.id, v) }
-                        }
+                            is ExcelComposeFilter.ChoiceFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                                ChoiceFilterCell(filters[c.id].orEmpty(), f.options, colors.filterBorderColor) { v -> onFilter(c.id, v) }
+                            }
 
-                        is ExcelComposeFilter.MultiChoiceFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
-                            MultiChoiceFilterCell(filters[c.id].orEmpty(), f.options, f.allLabel, colors.filterBorderColor) { v -> onFilter(c.id, v) }
-                        }
+                            is ExcelComposeFilter.MultiChoiceFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                                MultiChoiceFilterCell(filters[c.id].orEmpty(), f.options, f.allLabel, colors.filterBorderColor) { v -> onFilter(c.id, v) }
+                            }
 
-                        is ExcelComposeFilter.CustomFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
-                            f.content(filters[c.id].orEmpty()) { v -> onFilter(c.id, v) }
+                            is ExcelComposeFilter.CustomFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                                f.content(filters[c.id].orEmpty()) { v -> onFilter(c.id, v) }
+                            }
                         }
                     }
                 }

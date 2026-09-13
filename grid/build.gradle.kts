@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "io.github.ridvangnc"
-version = "0.3.0"
+version = "0.3.1"
 
 mavenPublishing {
     publishToMavenCentral()

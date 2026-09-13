@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.dp
 fun ChoiceFilterCell(
     current: String,
     options: List<Pair<String, String>>,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
     onChange: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -38,7 +40,7 @@ fun ChoiceFilterCell(
     Box {
         Row(
             Modifier.fillMaxWidth()
-                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
+                .border(1.dp, borderColor, RoundedCornerShape(4.dp))
                 .clickable { open = true }
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -69,6 +71,7 @@ fun MultiChoiceFilterCell(
     current: String,
     options: List<Pair<String, String>>,
     allLabel: String,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
     onChange: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -78,7 +81,7 @@ fun MultiChoiceFilterCell(
     Box {
         Row(
             Modifier.fillMaxWidth()
-                .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
+                .border(1.dp, borderColor, RoundedCornerShape(4.dp))
                 .clickable { open = true }
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,

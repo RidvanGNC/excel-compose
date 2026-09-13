@@ -20,6 +20,8 @@ data class ExcelGridColors(
     val rowContainerColor: Color,
     val selectedRowContainerColor: Color,
     val lineColor: Color,
+    /** Border around every filter box (text/[ChoiceFilterCell]/[MultiChoiceFilterCell] alike). */
+    val filterBorderColor: Color,
 )
 
 object ExcelGridDefaults {
@@ -32,6 +34,7 @@ object ExcelGridDefaults {
         rowContainerColor: Color = MaterialTheme.colorScheme.surface,
         selectedRowContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
         lineColor: Color = MaterialTheme.colorScheme.outlineVariant,
+        filterBorderColor: Color = MaterialTheme.colorScheme.outline,
     ): ExcelGridColors = ExcelGridColors(
         containerColor = containerColor,
         headerContainerColor = headerContainerColor,
@@ -39,5 +42,6 @@ object ExcelGridDefaults {
         rowContainerColor = rowContainerColor,
         selectedRowContainerColor = selectedRowContainerColor,
         lineColor = lineColor,
+        filterBorderColor = filterBorderColor,
     )
 }

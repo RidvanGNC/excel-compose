@@ -1,6 +1,8 @@
 package excelcompose.grid
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -23,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +49,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
@@ -94,6 +98,10 @@ fun <T> DataGrid(
     onSelectAll: (selectAll: Boolean) -> Unit = {},
     filters: Map<String, String> = emptyMap(),
     onFilter: (columnId: String, value: String) -> Unit = { _, _ -> },
+    /** Trailing glyph inside the default [ExcelComposeFilter.TextFilter] box — replace with your own icon. */
+    filterTrailingIcon: @Composable () -> Unit = {
+        FilterGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(width = 10.dp, height = 9.dp))
+    },
     loading: Boolean = false,
     loadingNextPage: Boolean = false,
     onRowOpen: (T) -> Unit = {},
@@ -284,28 +292,34 @@ fun <T> DataGrid(
                     when (val f = c.filter) {
                         is ExcelComposeFilter.NoFilter -> Box(Modifier.width(effective[i]))
 
-                        is ExcelComposeFilter.TextFilter -> Box(
-                            Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 4.dp)
-                                .background(MaterialTheme.colorScheme.surface),
-                        ) {
-                            BasicTextField(
-                                value = filters[c.id].orEmpty(),
-                                onValueChange = { onFilter(c.id, it) },
-                                singleLine = true,
-                                textStyle = MaterialTheme.typography.bodySmall.copy(
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                ),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
-                            )
+                        is ExcelComposeFilter.TextFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .border(1.dp, colors.filterBorderColor, RoundedCornerShape(4.dp))
+                                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                BasicTextField(
+                                    value = filters[c.id].orEmpty(),
+                                    onValueChange = { onFilter(c.id, it) },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    ),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                filterTrailingIcon()
+                            }
                         }
 
                         is ExcelComposeFilter.ChoiceFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
-                            ChoiceFilterCell(filters[c.id].orEmpty(), f.options) { v -> onFilter(c.id, v) }
+                            ChoiceFilterCell(filters[c.id].orEmpty(), f.options, colors.filterBorderColor) { v -> onFilter(c.id, v) }
                         }
 
                         is ExcelComposeFilter.MultiChoiceFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
-                            MultiChoiceFilterCell(filters[c.id].orEmpty(), f.options, f.allLabel) { v -> onFilter(c.id, v) }
+                            MultiChoiceFilterCell(filters[c.id].orEmpty(), f.options, f.allLabel, colors.filterBorderColor) { v -> onFilter(c.id, v) }
                         }
 
                         is ExcelComposeFilter.CustomFilter -> Box(Modifier.width(effective[i]).padding(horizontal = 6.dp, vertical = 3.dp)) {
@@ -487,6 +501,28 @@ private fun Modifier.rowTapGestures(
                 onTap() // second press turned into a drag — fall back to treating the first as a single
             }
         }
+    }
+}
+
+/**
+ * Small funnel/filter glyph for the default text filter box — hand-drawn so the library
+ * doesn't need to pull in a whole icon-font dependency for one shape.
+ */
+@Composable
+private fun FilterGlyph(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(0f, 0f)
+            lineTo(w, 0f)
+            lineTo(w * 0.6f, h * 0.55f)
+            lineTo(w * 0.6f, h)
+            lineTo(w * 0.4f, h * 0.8f)
+            lineTo(w * 0.4f, h * 0.55f)
+            close()
+        }
+        drawPath(path, color = tint)
     }
 }
 

@@ -90,25 +90,25 @@ See [`demo/`](demo) for a complete, runnable example (`./gradlew :demo:run`).
 
 Drag any header border to resize a column, like Excel — only the column you're dragging changes size, the rest hold steady.
 
-<img src="video/column-resize.gif" width="700" alt="Column resizing">
+<p align="center"><img src="video/column-resize.gif" width="700" border="2" alt="Column resizing"></p>
 
 #### Sorting
 
 Click a sortable header to sort ascending/descending; the indicator (▴ ▾ ↕) shows the current state.
 
-<img src="video/sorting.gif" width="700" alt="Sorting">
+<p align="center"><img src="video/sorting.gif" width="700" border="2" alt="Sorting"></p>
 
 #### Filtering
 
 Type in a column's filter box, or use a dropdown (`ChoiceFilter`/`MultiChoiceFilter`) for a fixed set of values.
 
-<img src="video/filtering.gif" width="700" alt="Filtering">
+<p align="center"><img src="video/filtering.gif" width="700" border="2" alt="Filtering"></p>
 
 #### Row selection
 
 An optional leading checkbox column with a tri-state "select all" in the header.
 
-<img src="video/row-selection.gif" width="700" alt="Row selection">
+<p align="center"><img src="video/row-selection.gif" width="700" border="2" alt="Row selection"></p>
 
 ### API reference
 
@@ -332,25 +332,25 @@ Tam, çalıştırılabilir bir örnek için [`demo/`](demo)'ya bak (`./gradlew :
 
 Excel'deki gibi herhangi bir başlık sınırını sürükleyerek kolonu boyutlandır — sadece sürüklediğin kolon değişir, diğerleri yerinde kalır.
 
-<img src="video/column-resize.gif" width="700" alt="Column resizing">
+<p align="center"><img src="video/column-resize.gif" width="700" border="2" alt="Column resizing"></p>
 
 #### Sıralama
 
 Sıralanabilir bir başlığa tıkla, artan/azalan sıralanır; gösterge (▴ ▾ ↕) o anki durumu gösterir.
 
-<img src="video/sorting.gif" width="700" alt="Sorting">
+<p align="center"><img src="video/sorting.gif" width="700" border="2" alt="Sorting"></p>
 
 #### Filtreleme
 
 Bir kolonun filtre kutusuna yaz, ya da sabit bir değer kümesi için açılır liste (`ChoiceFilter`/`MultiChoiceFilter`) kullan.
 
-<img src="video/filtering.gif" width="700" alt="Filtering">
+<p align="center"><img src="video/filtering.gif" width="700" border="2" alt="Filtering"></p>
 
 #### Satır seçimi
 
 Başlıkta üç durumlu "hepsini seç" içeren opsiyonel, sol başta bir checkbox kolonu.
 
-<img src="video/row-selection.gif" width="700" alt="Row selection">
+<p align="center"><img src="video/row-selection.gif" width="700" border="2" alt="Row selection"></p>
 
 ### API referansı
 

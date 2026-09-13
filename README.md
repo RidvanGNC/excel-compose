@@ -6,6 +6,7 @@ An Excel-style dense data grid for <a href="https://www.jetbrains.com/lp/compose
 
 <p align="center">
 <a href="https://central.sonatype.com/artifact/io.github.ridvangnc/excel-compose"><img alt="Maven Central" src="https://img.shields.io/maven-central/v/io.github.ridvangnc/excel-compose"></a>
+<a href="https://github.com/RidvanGNC/excel-compose/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/RidvanGNC/excel-compose"></a>
 <a href="https://github.com/RidvanGNC/excel-compose/actions/workflows/ci.yml"><img alt="build" src="https://github.com/RidvanGNC/excel-compose/actions/workflows/ci.yml/badge.svg"></a>
 <img alt="kotlin" src="https://img.shields.io/badge/kotlin-2.4.10-7F52FF?logo=kotlin&logoColor=white">
 <img alt="license" src="https://img.shields.io/github/license/RidvanGNC/excel-compose">

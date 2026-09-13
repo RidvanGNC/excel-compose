@@ -98,9 +98,13 @@ fun <T> DataGrid(
     onSelectAll: (selectAll: Boolean) -> Unit = {},
     filters: Map<String, String> = emptyMap(),
     onFilter: (columnId: String, value: String) -> Unit = { _, _ -> },
+    /** Color of the default filter-icon glyph — ignored if [filterTrailingIcon] is overridden. */
+    filterIconColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    /** Size of the default filter-icon glyph — ignored if [filterTrailingIcon] is overridden. */
+    filterIconSize: Dp = 10.dp,
     /** Trailing glyph inside the default [ExcelComposeFilter.TextFilter] box — replace with your own icon. */
     filterTrailingIcon: @Composable () -> Unit = {
-        FilterGlyph(tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(width = 10.dp, height = 9.dp))
+        FilterGlyph(tint = filterIconColor, modifier = Modifier.size(filterIconSize))
     },
     loading: Boolean = false,
     loadingNextPage: Boolean = false,

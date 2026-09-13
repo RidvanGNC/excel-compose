@@ -90,25 +90,25 @@ See [`demo/`](demo) for a complete, runnable example (`./gradlew :demo:run`).
 
 Drag any header border to resize a column, like Excel — only the column you're dragging changes size, the rest hold steady.
 
-<video src="video/column-resize.mp4" controls width="700"></video>
+<img src="video/column-resize.gif" width="700" alt="Column resizing">
 
 #### Sorting
 
 Click a sortable header to sort ascending/descending; the indicator (▴ ▾ ↕) shows the current state.
 
-<video src="video/sorting.mp4" controls width="700"></video>
+<img src="video/sorting.gif" width="700" alt="Sorting">
 
 #### Filtering
 
 Type in a column's filter box, or use a dropdown (`ChoiceFilter`/`MultiChoiceFilter`) for a fixed set of values.
 
-<video src="video/filtering.mp4" controls width="700"></video>
+<img src="video/filtering.gif" width="700" alt="Filtering">
 
 #### Row selection
 
 An optional leading checkbox column with a tri-state "select all" in the header.
 
-<video src="video/row-selection.mp4" controls width="700"></video>
+<img src="video/row-selection.gif" width="700" alt="Row selection">
 
 ### API reference
 
@@ -332,25 +332,25 @@ Tam, çalıştırılabilir bir örnek için [`demo/`](demo)'ya bak (`./gradlew :
 
 Excel'deki gibi herhangi bir başlık sınırını sürükleyerek kolonu boyutlandır — sadece sürüklediğin kolon değişir, diğerleri yerinde kalır.
 
-<video src="video/column-resize.mp4" controls width="700"></video>
+<img src="video/column-resize.gif" width="700" alt="Column resizing">
 
 #### Sıralama
 
 Sıralanabilir bir başlığa tıkla, artan/azalan sıralanır; gösterge (▴ ▾ ↕) o anki durumu gösterir.
 
-<video src="video/sorting.mp4" controls width="700"></video>
+<img src="video/sorting.gif" width="700" alt="Sorting">
 
 #### Filtreleme
 
 Bir kolonun filtre kutusuna yaz, ya da sabit bir değer kümesi için açılır liste (`ChoiceFilter`/`MultiChoiceFilter`) kullan.
 
-<video src="video/filtering.mp4" controls width="700"></video>
+<img src="video/filtering.gif" width="700" alt="Filtering">
 
 #### Satır seçimi
 
 Başlıkta üç durumlu "hepsini seç" içeren opsiyonel, sol başta bir checkbox kolonu.
 
-<video src="video/row-selection.mp4" controls width="700"></video>
+<img src="video/row-selection.gif" width="700" alt="Row selection">
 
 ### API referansı
 

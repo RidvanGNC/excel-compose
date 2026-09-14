@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "io.github.ridvangnc"
-version = "0.3.2"
+version = "0.3.3"
 
 mavenPublishing {
     publishToMavenCentral()
@@ -49,7 +49,11 @@ kotlin {
         }
     }
 
-    jvm("desktop")
+    jvm("desktop") {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {

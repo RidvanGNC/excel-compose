@@ -414,17 +414,24 @@ fun <T> DataGrid(
                     }
                 }
 
-                GridVerticalScrollbar(
-                    listState,
-                    Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 2.dp),
-                )
+                // A scrollbar only when there's actually something to scroll — Compose's own
+                // VerticalScrollbar draws a full-track thumb (not nothing) when content already
+                // fits, which reads as a spurious control on short grids (e.g. a 2-row preview).
+                if (listState.canScrollForward || listState.canScrollBackward) {
+                    GridVerticalScrollbar(
+                        listState,
+                        Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 2.dp),
+                    )
+                }
 
                 if (!loading && rows.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { emptyState() }
                 }
             }
 
-            GridHorizontalScrollbar(hScroll, Modifier.fillMaxWidth().padding(horizontal = 2.dp))
+            if (hScroll.canScrollForward || hScroll.canScrollBackward) {
+                GridHorizontalScrollbar(hScroll, Modifier.fillMaxWidth().padding(horizontal = 2.dp))
+            }
         }
     }
 }

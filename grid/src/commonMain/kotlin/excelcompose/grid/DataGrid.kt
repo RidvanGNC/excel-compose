@@ -91,13 +91,14 @@ val FILTER_ROW_HEIGHT = 32.dp
 
 /**
  * An Excel-style dense data grid: header + column-filter row + a lazily-laid-out body,
- * all sharing one horizontal scroll position. Columns render at their configured (or
- * user-resized) width regardless of how wide the grid itself is — a grid wider than its
+ * all sharing one horizontal scroll position. By default columns render at their configured
+ * (or user-resized) width regardless of how wide the grid itself is — a grid wider than its
  * columns' combined width just shows plain background past the last one, rather than every
- * column stretching to cover it; a grid narrower than that sum scrolls horizontally instead.
- * See [GridColumn] for per-column configuration and [ExcelGridColors] for theming (no
- * CompositionLocal — pass colors in directly, same spirit as
- * [androidx.compose.material3.Scaffold]'s `containerColor`).
+ * column stretching to cover it; a grid narrower than that sum scrolls horizontally either
+ * way. Set [stretchColumns] to restore the older behavior of proportionally growing
+ * not-yet-manually-resized columns to fill any leftover width. See [GridColumn] for per-column
+ * configuration and [ExcelGridColors] for theming (no CompositionLocal — pass colors in
+ * directly, same spirit as [androidx.compose.material3.Scaffold]'s `containerColor`).
  *
  * Column widths dragged by the user are kept in memory for the lifetime of this
  * composable; [initialColumnWidths] seeds them and [onColumnWidthChange] is called once a
@@ -168,6 +169,16 @@ fun <T> DataGrid(
     onNearEnd: () -> Unit = {},
     initialColumnWidths: Map<String, Dp> = emptyMap(),
     onColumnWidthChange: (columnId: String, width: Dp) -> Unit = { _, _ -> },
+    /**
+     * When true, every column without a manually-set width (drag-resized or in
+     * [initialColumnWidths]) grows proportionally to its own configured [GridColumn.width] to
+     * absorb any leftover space once the grid is wider than the columns' combined width — the
+     * grid's own background never shows past the last column. `false` (the default) leaves
+     * that leftover space as plain background instead. Purely a layout choice — has no effect
+     * once the grid is narrower than its columns' combined width (it already scrolls either
+     * way), and manually-resized columns never stretch regardless of this flag.
+     */
+    stretchColumns: Boolean = false,
     /**
      * Turns on column-editing affordances: a "+" button that appends a column
      * ([onAddColumn]), a delete glyph on each header ([onDeleteColumn]), and
@@ -294,15 +305,34 @@ fun <T> DataGrid(
     // of this function) can never paint past this composable's own bounds while a column is
     // being dragged near the edge of a grid narrower than its total column width.
     BoxWithConstraints(modifier.background(colors.containerColor).clipToBounds()) {
+        val available = maxWidth
         val committedOverrideWidths = remember(columns, committedWidths.toMap()) {
             columns.map { c -> committedWidths[c.id] }
         }
 
-        // Columns render at their configured (or user-resized) width, full stop — they don't
-        // stretch to fill extra space when the grid is wider than their sum. A grid wider
-        // than its columns just shows plain background past the last one.
-        val effective = remember(columns, committedOverrideWidths, dragWidths.toMap()) {
-            val settled = columns.mapIndexed { i, c -> committedOverrideWidths[i] ?: c.width }
+        // Columns render at their configured (or user-resized) width by default — they don't
+        // stretch to fill extra space when the grid is wider than their sum, so a grid wider
+        // than its columns just shows plain background past the last one. stretchColumns
+        // restores the older proportional-growth behavior instead (see its own doc). Either
+        // way, the extra-space pool below only looks at COMMITTED widths, so it stays fixed
+        // while a drag is in progress — otherwise every stretchable column would visibly
+        // shrink in lockstep as the dragged column grows, since they'd all be sharing a pool
+        // that shrinks with it. The live drag width is applied afterwards, to that one column.
+        val effective = remember(columns, committedOverrideWidths, dragWidths.toMap(), stretchColumns, available) {
+            val settled = if (stretchColumns) {
+                val stretchableBase = columns.filterIndexed { i, _ -> committedOverrideWidths[i] == null }
+                    .fold(0.dp) { a, c -> a + c.width }
+                val overrideTotal = committedOverrideWidths.filterNotNull().fold(0.dp) { a, w -> a + w }
+                val baseTotal = selectionColumnWidth + overrideTotal + stretchableBase
+                if (baseTotal < available && stretchableBase > 0.dp) {
+                    val extra = available - baseTotal
+                    columns.mapIndexed { i, c -> committedOverrideWidths[i] ?: (c.width + extra * (c.width / stretchableBase)) }
+                } else {
+                    columns.mapIndexed { i, c -> committedOverrideWidths[i] ?: c.width }
+                }
+            } else {
+                columns.mapIndexed { i, c -> committedOverrideWidths[i] ?: c.width }
+            }
             columns.mapIndexed { i, c -> dragWidths[c.id] ?: settled[i] }
         }
         val lineWidths = listOf(selectionColumnWidth) + effective
@@ -835,6 +865,7 @@ fun <T> DataGrid(
                                                 contextMenuCellText = cellText
                                             }
                                             .padding(horizontal = 8.dp),
+                                        contentAlignment = c.contentAlign,
                                     ) {
                                         when (val cell = c.cell) {
                                             is ExcelComposeCell.CustomCell -> cell.content(row)

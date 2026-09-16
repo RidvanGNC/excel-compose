@@ -29,6 +29,8 @@ An Excel-style dense data grid for <a href="https://www.jetbrains.com/lp/compose
 ### Features
 
 - **Resizable columns** — drag a header border like Excel; the rest of the grid doesn't jitter while you drag (only the column you're resizing changes size).
+- **Optional column stretching** — `stretchColumns` grows not-manually-resized columns to fill leftover width instead of leaving plain background past the last one; off by default.
+- **Per-column content alignment** — `GridColumn.contentAlign` positions a body cell's content anywhere in its row-height box (any of the 9 `Alignment` combinations), `CenterStart` by default.
 - **Click-to-sort headers** — the grid only renders the indicator (▴ ▾ ↕) and reports which column was clicked; you own the actual sorting logic.
 - **Per-column filters** — a plain text box by default, or plug in `ChoiceFilterCell` / `MultiChoiceFilterCell` / your own composable.
 - **Row selection** — an optional leading checkbox column with a tri-state "select all".
@@ -139,6 +141,7 @@ The grid itself. All parameters have defaults except `columns`, `rows`, and `key
 | `onNearEnd` | `() -> Unit` | Called once the list has scrolled within 8 rows of the end — wire up pagination here. |
 | `initialColumnWidths` | `Map<String, Dp>` | Seeds column widths the user previously resized (e.g. loaded from your own storage). |
 | `onColumnWidthChange` | `(columnId, width) -> Unit` | Fires once a drag finishes — persist it however you like. |
+| `stretchColumns` | `Boolean` | `false` by default: columns render at exactly their configured/resized width, and a grid wider than their combined width just shows background past the last one. `true` grows every not-manually-resized column proportionally to fill that leftover space instead. |
 | `editable` | `Boolean` | Turns on column-editing affordances — see [Column editing & reordering](#column-editing--reordering). `false` by default; even then, each affordance only renders if its own callback below is non-null. |
 | `onAddColumn` | `(() -> Unit)?` | A "+" button pinned to the header's top-right corner was clicked — append whatever column you like to your own `columns` list. |
 | `onDeleteColumn` | `((columnId: String) -> Unit)?` | A header's "×" glyph was clicked. |
@@ -165,6 +168,7 @@ data class GridColumn<T>(
     val filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     val sortable: Boolean = false,
     val align: TextAlign = TextAlign.Start,
+    val contentAlign: Alignment = Alignment.CenterStart,
 )
 
 // Convenience constructor for the common case — plain text, no need to wrap it yourself:
@@ -172,13 +176,15 @@ fun <T> GridColumn(
     id: String, heading: String, width: Dp,
     filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     sortable: Boolean = false, align: TextAlign = TextAlign.Start,
+    contentAlign: Alignment = Alignment.CenterStart,
     value: (T) -> String,
 ): GridColumn<T>
 ```
 
-- `width` is the column's on-screen width (or its starting width, if the user resizes it) — columns render at exactly this width and never stretch to fill extra space; a grid wider than its columns' combined width just shows plain background past the last one, and a grid narrower than that sum scrolls horizontally instead.
+- `width` is the column's on-screen width (or its starting width, if the user resizes it) — columns render at exactly this width and never stretch to fill extra space by default; a grid wider than its columns' combined width just shows plain background past the last one, and a grid narrower than that sum scrolls horizontally instead. Set `DataGrid`'s own `stretchColumns = true` to grow not-manually-resized columns proportionally into that leftover space instead.
 - `cell` picks what the cell body renders — see [`ExcelComposeCell`](#excelcomposecell) below. Most columns just pass `value = { ... }` and never touch `cell` directly; that goes through the convenience constructor.
 - `filter` picks what the filter-row box looks like — see [`ExcelComposeFilter`](#excelcomposefilter) below.
+- `contentAlign` positions this column's BODY cell content (any `Alignment`, e.g. `Alignment.TopEnd`) within its full row-height box — `Alignment.CenterStart` (left-aligned, vertically centered) by default. Unrelated to `align` (`TextAlign`), which only affects a `TextCell`'s own horizontal text alignment. Header/filter cells are unaffected — this is body rows only.
 
 #### `ExcelComposeCell`
 
@@ -348,6 +354,8 @@ MIT — see [LICENSE](LICENSE).
 ### Özellikler
 
 - **Kolon genişliği ayarlanabilir** — Excel'deki gibi başlık sınırından sürükle; sürüklerken diğer kolonlar titremiyor (sadece sürüklediğin kolon boyut değiştiriyor).
+- **Opsiyonel kolon büyütme** — `stretchColumns`, elle boyutlandırılmamış kolonları boş alanı doldurmak için büyütür (son kolondan sonra düz arka plan bırakmak yerine); varsayılan kapalı.
+- **Kolon bazlı içerik hizalama** — `GridColumn.contentAlign`, gövde hücresinin içeriğini satır-yüksekliğindeki kutu içinde istediğin yere konumlandırır (9 `Alignment` kombinasyonundan biri), varsayılan `CenterStart`.
 - **Başlığa tıklayarak sıralama** — grid yalnızca ok göstergesini (▴ ▾ ↕) çiziyor ve hangi kolona tıklandığını bildiriyor; asıl sıralama mantığı sende.
 - **Kolon bazlı filtreler** — varsayılan olarak düz metin kutusu, istersen `ChoiceFilterCell` / `MultiChoiceFilterCell` ya da kendi composable'ını bağlarsın.
 - **Satır seçimi** — opsiyonel, sol başta üç durumlu ("hepsini seç") checkbox kolonu.
@@ -458,6 +466,7 @@ Grid'in kendisi. `columns`, `rows`, `key` dışındaki tüm parametrelerin varsa
 | `onNearEnd` | `() -> Unit` | Liste sona 8 satır kalana kadar kaydırıldığında bir kez çağrılır — sayfalama burada bağlanır. |
 | `initialColumnWidths` | `Map<String, Dp>` | Kullanıcının daha önce sürükleyerek ayarladığı kolon genişliklerini besler (ör. kendi deponuzdan yüklenmiş). |
 | `onColumnWidthChange` | `(columnId, width) -> Unit` | Bir sürükleme bitince bir kez tetiklenir — istediğin gibi kalıcı hale getir. |
+| `stretchColumns` | `Boolean` | Varsayılan `false`: kolonlar tam olarak ayarlanmış/yeniden boyutlandırılmış genişliklerinde çizilir, grid toplam genişliklerinden genişse son kolondan sonrası düz arka plan gösterir. `true` iken elle boyutlandırılmamış her kolon o boşluğu doldurmak için kendi genişliğiyle orantılı büyür. |
 | `editable` | `Boolean` | Kolon düzenleme özelliklerini açar — bkz. [Kolon düzenleme ve yeniden sıralama](#kolon-düzenleme-ve-yeniden-sıralama). Varsayılan `false`; açık olsa bile her özellik yalnızca ilgili callback `null` değilse devreye girer. |
 | `onAddColumn` | `(() -> Unit)?` | Başlığın sağ üst köşesine sabitlenmiş "+" düğmesine tıklandı — kendi `columns` listene istediğin kolonu ekle. |
 | `onDeleteColumn` | `((columnId: String) -> Unit)?` | Bir başlığın "×" işaretine tıklandı. |
@@ -484,6 +493,7 @@ data class GridColumn<T>(
     val filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     val sortable: Boolean = false,
     val align: TextAlign = TextAlign.Start,
+    val contentAlign: Alignment = Alignment.CenterStart,
 )
 
 // Yaygın durum için kolaylık constructor'ı — düz metin, kendin sarmalamana gerek yok:
@@ -491,13 +501,15 @@ fun <T> GridColumn(
     id: String, heading: String, width: Dp,
     filter: ExcelComposeFilter = ExcelComposeFilter.TextFilter,
     sortable: Boolean = false, align: TextAlign = TextAlign.Start,
+    contentAlign: Alignment = Alignment.CenterStart,
     value: (T) -> String,
 ): GridColumn<T>
 ```
 
-- `width` kolonun ekrandaki genişliğidir (kullanıcı yeniden boyutlandırırsa, başlangıç genişliği) — kolonlar tam olarak bu genişlikte çizilir, boşluğu doldurmak için hiç büyümez; grid, kolonların toplam genişliğinden daha genişse son kolondan sonrasında düz arka plan gösterir, daha darsa yatay kayar.
+- `width` kolonun ekrandaki genişliğidir (kullanıcı yeniden boyutlandırırsa, başlangıç genişliği) — kolonlar varsayılan olarak tam bu genişlikte çizilir, boşluğu doldurmak için büyümez; grid, kolonların toplam genişliğinden daha genişse son kolondan sonrasında düz arka plan gösterir, daha darsa yatay kayar. `DataGrid`'in `stretchColumns = true`'unu ayarlayarak elle boyutlandırılmamış kolonları o boşluğu doldurmak üzere orantılı büyütebilirsin.
 - `cell`, hücre gövdesinin neyi çizeceğini seçer — aşağıdaki [`ExcelComposeCell`](#excelcomposecell-1)'e bak. Çoğu kolon sadece `value = { ... }` verir, `cell`'e hiç dokunmaz — bu, kolaylık constructor'ından geçer.
 - `filter`, filtre satırındaki kutunun neye benzeyeceğini seçer — aşağıdaki [`ExcelComposeFilter`](#excelcomposefilter-1)'e bak.
+- `contentAlign`, bu kolonun GÖVDE hücrelerinin (başlık/filtre değil) içeriğini tam satır-yüksekliğindeki kutu içinde nasıl konumlandıracağını belirler (herhangi bir `Alignment`, ör. `Alignment.TopEnd`) — varsayılan `Alignment.CenterStart` (sola dayalı, dikeyde ortalı). `align` (`TextAlign`) ile ilgisi yoktur — o yalnızca bir `TextCell`'in kendi yatay metin hizasını etkiler.
 
 #### `ExcelComposeCell`
 

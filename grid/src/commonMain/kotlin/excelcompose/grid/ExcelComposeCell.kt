@@ -20,8 +20,14 @@ sealed interface ExcelComposeCell<T> {
      * "copy cell"/"copy row" context-menu items (see `copyCellLabel`/`copyRowLabel`) — left
      * `null` (the default), a cell built this way is simply skipped by both, the same as a
      * column with no [copyValue] configured at all.
+     *
+     * [content] is declared LAST specifically so `ExcelComposeCell.CustomCell { row -> ... }`
+     * (Kotlin's trailing-lambda syntax, which always binds to a function type's LAST
+     * parameter) keeps binding to [content] the way it already did before [copyValue]
+     * existed — putting [copyValue] last instead would have silently redirected every
+     * existing trailing-lambda call site's body to [copyValue] instead, breaking them.
      */
-    data class CustomCell<T>(val content: @Composable (T) -> Unit, val copyValue: ((T) -> String)? = null) : ExcelComposeCell<T>
+    data class CustomCell<T>(val copyValue: ((T) -> String)? = null, val content: @Composable (T) -> Unit) : ExcelComposeCell<T>
 }
 
 /**

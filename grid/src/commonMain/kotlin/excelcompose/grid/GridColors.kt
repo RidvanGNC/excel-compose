@@ -19,9 +19,21 @@ data class ExcelGridColors(
     val filterContainerColor: Color,
     val rowContainerColor: Color,
     val selectedRowContainerColor: Color,
+    /**
+     * A [rowDimmed] row's background — deliberately a SEPARATE token from
+     * [filterContainerColor], not a reuse of it. It used to borrow filterContainerColor,
+     * which is semi-transparent (0.6 alpha) by design for its own actual purpose (a light
+     * wash under the filter row); reused as a row background, that transparency let whatever
+     * was underneath keep showing through, which is what read as a persistent "background
+     * doesn't fully cover" bug through several rounds of otherwise-unrelated fixes. This is
+     * fully opaque by default.
+     */
+    val dimmedRowContainerColor: Color,
     val lineColor: Color,
     /** Border around every filter box (text/[ChoiceFilterCell]/[MultiChoiceFilterCell] alike). */
     val filterBorderColor: Color,
+    /** The single-block outline drawn around a column while it's being drag-reordered. */
+    val selectedBorderColor: Color,
 )
 
 object ExcelGridDefaults {
@@ -33,15 +45,19 @@ object ExcelGridDefaults {
         filterContainerColor: Color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
         rowContainerColor: Color = MaterialTheme.colorScheme.surface,
         selectedRowContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+        dimmedRowContainerColor: Color = MaterialTheme.colorScheme.surfaceVariant,
         lineColor: Color = MaterialTheme.colorScheme.outlineVariant,
         filterBorderColor: Color = MaterialTheme.colorScheme.outline,
+        selectedBorderColor: Color = MaterialTheme.colorScheme.primary,
     ): ExcelGridColors = ExcelGridColors(
         containerColor = containerColor,
         headerContainerColor = headerContainerColor,
         filterContainerColor = filterContainerColor,
         rowContainerColor = rowContainerColor,
         selectedRowContainerColor = selectedRowContainerColor,
+        dimmedRowContainerColor = dimmedRowContainerColor,
         lineColor = lineColor,
         filterBorderColor = filterBorderColor,
+        selectedBorderColor = selectedBorderColor,
     )
 }

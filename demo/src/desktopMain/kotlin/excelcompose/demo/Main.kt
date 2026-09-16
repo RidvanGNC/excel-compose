@@ -2,10 +2,15 @@ package excelcompose.demo
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,27 +59,36 @@ private fun DemoScreen() {
     var sortDesc by remember { mutableStateOf(false) }
     var selectedKeys by remember { mutableStateOf(setOf<String>()) }
     var lastTap by remember { mutableStateOf("no tap yet") }
+    var editable by remember { mutableStateOf(true) }
+    var addColumnDialogOpen by remember { mutableStateOf(false) }
+    var newColumnText by remember { mutableStateOf("") }
+    var customColumnCounter by remember { mutableStateOf(0) }
 
-    val columns = remember {
-        listOf(
-            GridColumn<Employee>("name", "Name", 200.dp, sortable = true, value = { it.name }),
-            GridColumn(
-                "department", "Department", 160.dp, value = { it.department },
-                filter = ExcelComposeFilter.ChoiceFilter(
-                    listOf("" to "All", "Engineering" to "Engineering", "Research" to "Research", "R&D" to "R&D"),
+    // Mutable (not the original `remember { listOf(...) }`) so onAddColumn/onDeleteColumn/
+    // onReorder below have something to actually mutate — same pattern a real host app
+    // would use, since the grid itself never touches this list on its own.
+    var columns by remember {
+        mutableStateOf(
+            listOf(
+                GridColumn<Employee>("name", "Name", 200.dp, sortable = true, value = { it.name }),
+                GridColumn(
+                    "department", "Department", 160.dp, value = { it.department },
+                    filter = ExcelComposeFilter.ChoiceFilter(
+                        listOf("" to "All", "Engineering" to "Engineering", "Research" to "Research", "R&D" to "R&D"),
+                    ),
                 ),
-            ),
-            GridColumn(
-                id = "salary", heading = "Salary", width = 120.dp, sortable = true,
-                // CustomCell example: a star next to well-paid rows, still plain text otherwise.
-                cell = ExcelComposeCell.CustomCell<Employee> { emp ->
-                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(emp.salary.toString(), style = MaterialTheme.typography.bodySmall)
-                        if (emp.salary >= 95000) {
-                            Text(" ★", color = Color(0xFFB8860B), style = MaterialTheme.typography.bodySmall)
+                GridColumn(
+                    id = "salary", heading = "Salary", width = 120.dp, sortable = true,
+                    // CustomCell example: a star next to well-paid rows, still plain text otherwise.
+                    cell = ExcelComposeCell.CustomCell<Employee> { emp ->
+                        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(emp.salary.toString(), style = MaterialTheme.typography.bodySmall)
+                            if (emp.salary >= 95000) {
+                                Text(" ★", color = Color(0xFFB8860B), style = MaterialTheme.typography.bodySmall)
+                            }
                         }
-                    }
-                },
+                    },
+                ),
             ),
         )
     }
@@ -100,6 +114,10 @@ private fun DemoScreen() {
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Last tap: $lastTap", style = MaterialTheme.typography.labelMedium)
+        Row(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Editable columns", style = MaterialTheme.typography.labelMedium)
+            Switch(checked = editable, onCheckedChange = { editable = it }, modifier = Modifier.padding(start = 8.dp))
+        }
         DataGrid(
             columns = columns,
             rows = rows,
@@ -124,6 +142,44 @@ private fun DemoScreen() {
             onRowTap = { row, isDoubleTap ->
                 lastTap = "${row.name} (${if (isDoubleTap) "double" else "single"})"
             },
+            editable = editable,
+            onAddColumn = { newColumnText = ""; addColumnDialogOpen = true },
+            onDeleteColumn = { colId -> columns = columns.filterNot { it.id == colId } },
+            onReorder = { from, to ->
+                columns = columns.toMutableList().apply { add(to, removeAt(from)) }
+            },
+        )
+    }
+
+    if (addColumnDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { addColumnDialogOpen = false },
+            title = { Text("New column") },
+            text = {
+                // Whatever is typed here becomes both the column's heading AND its cell
+                // content (repeated per row) — there's no real Employee field to bind a
+                // freeform column to, so this just proves the onAddColumn round-trip end
+                // to end rather than pretending to be a realistic column.
+                OutlinedTextField(
+                    value = newColumnText,
+                    onValueChange = { newColumnText = it },
+                    label = { Text("Column name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = newColumnText.isNotBlank(),
+                    onClick = {
+                        val label = newColumnText.trim()
+                        val id = "custom-${customColumnCounter++}"
+                        columns = columns + GridColumn<Employee>(id, label, 140.dp, value = { label })
+                        addColumnDialogOpen = false
+                    },
+                ) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { addColumnDialogOpen = false }) { Text("Cancel") } },
         )
     }
 }

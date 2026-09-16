@@ -16,8 +16,10 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
-
+      # android-actions/setup-android kaldırıldı: sdkmanager'ın kurmaya çalıştığı eski
+      # "tools" paketi Google'ın SDK deposundan silindi (sdkmanager exit 1 ile patlıyordu).
+      # ubuntu-latest runner image'ı zaten çalışan bir Android SDK ile geliyor — publish.yml
+      # bu adım hiç olmadan Android derlemesini sorunsuz yapıyor, ayrıca gerek yok.
       - name: gradlew çalıştırılabilir
         run: chmod +x ./gradlew
 

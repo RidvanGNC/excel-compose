@@ -79,15 +79,20 @@ private fun DemoScreen() {
                 ),
                 GridColumn(
                     id = "salary", heading = "Salary", width = 120.dp, sortable = true,
-                    // CustomCell example: a star next to well-paid rows, still plain text otherwise.
-                    cell = ExcelComposeCell.CustomCell<Employee> { emp ->
-                        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(emp.salary.toString(), style = MaterialTheme.typography.bodySmall)
-                            if (emp.salary >= 95000) {
-                                Text(" ★", color = Color(0xFFB8860B), style = MaterialTheme.typography.bodySmall)
+                    // CustomCell example: a star next to well-paid rows, still plain text
+                    // otherwise. copyValue is what makes "Copy cell"/"Copy row" work for this
+                    // column too — without it, a CustomCell has no text to offer either item.
+                    cell = ExcelComposeCell.CustomCell<Employee>(
+                        content = { emp ->
+                            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(emp.salary.toString(), style = MaterialTheme.typography.bodySmall)
+                                if (emp.salary >= 95000) {
+                                    Text(" ★", color = Color(0xFFB8860B), style = MaterialTheme.typography.bodySmall)
+                                }
                             }
-                        }
-                    },
+                        },
+                        copyValue = { it.salary.toString() },
+                    ),
                 ),
             ),
         )
@@ -138,6 +143,9 @@ private fun DemoScreen() {
                 if (sortId == colId) sortDesc = !sortDesc else { sortId = colId; sortDesc = false }
             },
             onRowOpen = { },
+            copyCellLabel = "Copy cell",
+            copyRowLabel = "Copy row",
+            copySelectedRowsLabel = "Copy selected rows",
             // Escape hatch demo: host app reacts to raw taps without forking the grid.
             onRowTap = { row, isDoubleTap ->
                 lastTap = "${row.name} (${if (isDoubleTap) "double" else "single"})"

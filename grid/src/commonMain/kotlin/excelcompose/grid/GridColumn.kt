@@ -1,17 +1,18 @@
 package excelcompose.grid
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 
 /**
  * A single column definition for [DataGrid].
  *
- * @param width base (minimum) width; columns grow proportionally to fill extra
- * space when the grid is wider than the sum of all column widths.
+ * @param width the column's on-screen width (or its starting width, if the user resizes it).
  * @param cell what the cell body renders — see [ExcelComposeCell]. Use the
  * `GridColumn(..., value = { ... })` overload below for the common plain-text case.
  * @param filter what the filter-row box looks like for this column — see [ExcelComposeFilter].
  */
+@Immutable
 data class GridColumn<T>(
     val id: String,
     val heading: String,

@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -64,8 +65,10 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -79,6 +82,7 @@ private val MIN_COLUMN_WIDTH = 40.dp
 private val RESIZE_HANDLE_WIDTH = 10.dp
 private val SELECTION_COLUMN_WIDTH = 44.dp
 private val ADD_COLUMN_RESERVED_WIDTH = 32.dp
+private val FilterCellShape = RoundedCornerShape(4.dp)
 
 /** Exposed so a host app can size a container to an exact number of visible rows. */
 val ROW_HEIGHT = 30.dp
@@ -134,6 +138,32 @@ fun <T> DataGrid(
      * own behavior (e.g. a context menu, a hover-like highlight) without forking the grid.
      */
     onRowTap: ((row: T, isDoubleTap: Boolean) -> Unit)? = null,
+    /**
+     * Desktop-only: adds "copy this cell's text" to the right-click context menu (which
+     * otherwise just shows "Copy" for any actively selected text) — pass the label to show
+     * (e.g. `"Copy cell"`, `"Hücreyi kopyala"`). `null` (the default) leaves it out
+     * entirely, at no extra cost. Uses [ExcelComposeCell.copyText] — always available for
+     * [ExcelComposeCell.TextCell], only for a [ExcelComposeCell.CustomCell] that supplies
+     * its own `copyValue`. No effect on Android or any other non-desktop target — there's
+     * no right-click there.
+     */
+    copyCellLabel: String? = null,
+    /**
+     * Desktop-only: adds "copy this whole row" to the right-click context menu — a heading
+     * line (every copyable column's [GridColumn.heading]) followed by that row's own line
+     * (each column's [ExcelComposeCell.copyText]), comma-separated, skipping any column with
+     * no copyText (an [ExcelComposeCell.CustomCell] with no `copyValue`). `null` (the
+     * default) leaves it out entirely. No effect on Android or any other non-desktop target.
+     */
+    copyRowLabel: String? = null,
+    /**
+     * Desktop-only: adds "copy every selected row" to the right-click context menu — same
+     * heading line as [copyRowLabel], then one comma-separated line per currently selected
+     * row (in `rows` order), each on its own line. Only offered while [selectable] and at
+     * least one row is actually selected. `null` (the default) leaves it out entirely. No
+     * effect on Android or any other non-desktop target.
+     */
+    copySelectedRowsLabel: String? = null,
     /** Called once the body has scrolled within 8 rows of the end — hook up pagination here. */
     onNearEnd: () -> Unit = {},
     initialColumnWidths: Map<String, Dp> = emptyMap(),
@@ -218,8 +248,9 @@ fun <T> DataGrid(
     // Committed (drag-finished) widths live for this composable's lifetime, seeded once
     // from `initialColumnWidths`; `dragWidths` holds the width of a column only WHILE it
     // is actively being dragged. Keeping these separate is what stops sibling columns
-    // from jittering while one column is being resized — see the width-distribution
-    // comment below.
+    // from jittering while one column is being resized: `effective` below always prefers
+    // a column's own dragWidths entry, so only the column actually under the pointer
+    // recomputes its width text every frame — the others just read their settled value.
     val committedWidths = remember { mutableStateMapOf<String, Dp>().apply { putAll(initialColumnWidths) } }
     val dragWidths = remember { mutableStateMapOf<String, Dp>() }
     val density = LocalDensity.current
@@ -232,26 +263,44 @@ fun <T> DataGrid(
     var dragIndex by remember { mutableStateOf<Int?>(null) }
     var dragOffsetX by remember { mutableStateOf(0f) }
 
+    // Declared once and reused by every columnCell() call (header, filter, every visible
+    // body row) instead of each site allocating its own `{ dragIndex }`/`{ dragOffsetX }`
+    // lambda — the lambdas themselves never change identity, and each still re-reads the
+    // CURRENT state value when invoked (delegated-property reads, not a captured snapshot),
+    // so this is a pure allocation savings, not a behavior change.
+    val dragIndexOf: () -> Int? = { dragIndex }
+    val dragOffsetXOf: () -> Float = { dragOffsetX }
+
     // One Animatable PER COLUMN (keyed by id), shared by the header cell, the filter cell,
     // and every visible body row's cell for that column — so they all animate the sibling-
     // shift reflow in perfect sync off ONE clock, instead of each row racing its own. Only
     // the header loop below drives these (LaunchedEffect); filter/body just read .value.
     val columnShift = remember { mutableStateMapOf<String, Animatable<Float, AnimationVector1D>>() }
 
-    // clipToBounds here specifically so the selection overlay border below — a plain sibling
-    // positioned by raw pixel offset, not inside any scrolling/clipped child — can never
-    // paint past this composable's own bounds. Without it, dragging a column near the edge
-    // of a grid that's narrower than its total column width (needs horizontal scroll) let
-    // the border render past the grid entirely, into whatever the host app has beyond it.
+    // Deleting a column (onDeleteColumn) never removes that column's id from these three
+    // per-column maps on its own — they're keyed by id and nothing else prunes them. Without
+    // this, every column ever added-then-deleted leaves a permanently orphaned Animatable/Dp
+    // entry behind for the composable's whole lifetime. Reordering leaves the id set
+    // unchanged, so this is a no-op on every recomposition except an actual add/delete.
+    LaunchedEffect(columns) {
+        val liveIds = columns.mapTo(mutableSetOf()) { it.id }
+        columnShift.keys.retainAll(liveIds)
+        committedWidths.keys.retainAll(liveIds)
+        dragWidths.keys.retainAll(liveIds)
+    }
+
+    // clipToBounds so the selection overlay border (a plain sibling positioned by raw pixel
+    // offset, not inside any scrolling/clipped child — see its own comment near the bottom
+    // of this function) can never paint past this composable's own bounds while a column is
+    // being dragged near the edge of a grid narrower than its total column width.
     BoxWithConstraints(modifier.background(colors.containerColor).clipToBounds()) {
         val committedOverrideWidths = remember(columns, committedWidths.toMap()) {
             columns.map { c -> committedWidths[c.id] }
         }
 
-        // Columns render at their configured (or user-resized) width, full stop — they no
-        // longer stretch to fill extra space when the grid is wider than their sum. A grid
-        // wider than its columns just shows plain background past the last one, instead of
-        // every column growing to cover it.
+        // Columns render at their configured (or user-resized) width, full stop — they don't
+        // stretch to fill extra space when the grid is wider than their sum. A grid wider
+        // than its columns just shows plain background past the last one.
         val effective = remember(columns, committedOverrideWidths, dragWidths.toMap()) {
             val settled = columns.mapIndexed { i, c -> committedOverrideWidths[i] ?: c.width }
             columns.mapIndexed { i, c -> dragWidths[c.id] ?: settled[i] }
@@ -268,16 +317,10 @@ fun <T> DataGrid(
         //
         // Keyed on effective/selectionColumnWidth: dragIndex/dragOffsetX are snapshot State
         // reads INSIDE the lambda, so derivedStateOf already recomputes on its own whenever
-        // those change — but effective is a plain local List (a new one each recomposition
-        // once columns/widths change, e.g. adding a column via onAddColumn), not something
-        // derivedStateOf observes by itself. An earlier, unkeyed `remember { derivedStateOf
-        // {...} }` only ever ran its initializer on the FIRST composition, so the lambda
-        // stayed permanently closed over that first `effective` (whatever the column count
-        // was at startup) — adding a 4th column and dragging it then called
-        // resolveDropTarget(from = 3, ..., effective = <the original 3-element list>, ...),
-        // an index-3 read into a length-3 list. Keying remember itself on effective (and
-        // selectionColumnWidth, which can also change) forces a fresh derivedStateOf, closed
-        // over the CURRENT list, every time either actually changes.
+        // those change — but effective is a plain local List (a new instance whenever
+        // columns/widths change), not something derivedStateOf observes by itself, so the
+        // remember block itself needs to be re-run (producing a fresh derivedStateOf closed
+        // over the current list) whenever effective's identity changes.
         val hoverIndex by remember(effective, selectionColumnWidth) {
             derivedStateOf {
                 val from = dragIndex ?: return@derivedStateOf null
@@ -286,15 +329,12 @@ fun <T> DataGrid(
         }
 
         // The "+" button isn't a real column, so it's deliberately left out of totalWidth/
-        // lineWidths (used for cell layout and grid-line drawing) — but hScroll's maxValue is
-        // derived from whatever width is actually passed to .horizontalScroll(hScroll)'s
-        // content, and that's ENTIRELY separate from where the button is drawn. Leaving the
-        // scrollable content at exactly totalWidth meant maxValue never accounted for the
-        // button sitting past it: on a grid wide enough to need scrolling, you could scroll
-        // all the way to the real end of the columns and the button would STILL be past the
-        // viewport, unreachable — visible only if the window itself was widened past it.
-        // Reserving this width in the SAME scrollable content that header/filter/body rows
-        // all share (see scrollContentWidth below) is what lets scrolling actually reach it.
+        // lineWidths (used for cell layout and grid-line drawing). hScroll's shared maxValue
+        // is derived from whatever width is passed to .horizontalScroll(hScroll)'s content,
+        // which is entirely separate from where the button is drawn — reserving this width in
+        // the SAME scrollable content that header/filter/body rows all share (scrollContentWidth
+        // below) is what lets a scroll gesture actually reach the button on a grid narrower
+        // than its total column width.
         val addColumn = if (editable) onAddColumn else null
         val scrollContentWidth = totalWidth + (if (addColumn != null) ADD_COLUMN_RESERVED_WIDTH else 0.dp)
 
@@ -306,14 +346,13 @@ fun <T> DataGrid(
         }
 
         Column(Modifier.fillMaxSize()) {
-            // Outer static Box: the header itself scrolls horizontally same as before, but
-            // the "+" button (when editable) is a SIBLING that tracks the END of the actual
-            // column content — computed from totalWidth and the live hScroll position, not
-            // pinned to the container's own right edge. Columns no longer stretch to fill
-            // extra width (see `effective` above), so a wide grid with narrow columns would
-            // otherwise strand the button far from the last column with empty space between.
-            // clipToBounds keeps it from bleeding into the filter row below when it's
-            // positioned off the (unscrolled) visible area on a grid wide enough to scroll.
+            // Outer static Box: the header itself scrolls horizontally, but the "+" button
+            // (when editable) is a SIBLING that tracks the END of the actual column content —
+            // computed from totalWidth and the live hScroll position, not pinned to the
+            // container's own right edge, so it stays right after the last column even on a
+            // grid wider than the columns' combined width. clipToBounds keeps it from
+            // bleeding into the filter row below when it's positioned off the (unscrolled)
+            // visible area on a grid wide enough to scroll.
             val totalWidthPx = with(density) { totalWidth.toPx() }
             Box(Modifier.fillMaxWidth().height(HEADER_HEIGHT).clipToBounds()) {
                 // Header row + resize-handle overlay. The handles are a SEPARATE layer drawn
@@ -322,10 +361,10 @@ fun <T> DataGrid(
                 // column's header (sort click, etc).
                 Box(Modifier.horizontalScroll(hScroll).width(scrollContentWidth).fillMaxHeight()) {
                     Row(
-                        // No shared background/gridlines here anymore — every column cell
-                        // paints its own (see columnCell's doc for why); this Row keeps only
-                        // the bottom separator + selection-column boundary, which don't move
-                        // during a column drag since they don't depend on DATA column order.
+                        // No shared background/gridlines here — every column cell paints its
+                        // own (see columnCell's doc for why); this Row keeps only the bottom
+                        // separator + selection-column boundary, which don't move during a
+                        // column drag since they don't depend on DATA column order.
                         Modifier.fillMaxHeight().width(totalWidth)
                             .drawBehind { staticRowLines(colors.lineColor, selectionColumnWidth) },
                         verticalAlignment = Alignment.CenterVertically,
@@ -361,7 +400,13 @@ fun <T> DataGrid(
                                 // Only the reorder callback, gated on editable, turns the drag
                                 // gesture on at all — with neither set this Modifier chain is
                                 // byte-for-byte what it was before, no new gesture detector.
-                                val reorder = onReorder
+                                // rememberUpdatedState because the pointerInput coroutine below
+                                // is keyed on c.id alone (see its own comment) and stays alive
+                                // across recompositions where onReorder itself is a fresh lambda
+                                // instance (e.g. a host app passing one inline) — without this,
+                                // its onDragEnd would keep calling whatever onReorder was bound
+                                // at the moment the coroutine first launched, not the latest one.
+                                val currentReorder by rememberUpdatedState(onReorder)
 
                                 // The one Animatable for this column, shared with its filter/
                                 // body cells (see `columnShift` at the top of DataGrid). This
@@ -373,7 +418,7 @@ fun <T> DataGrid(
                                 // handful of times per drag gesture, not per pixel) that
                                 // reading them here, at composition time, is safe — unlike
                                 // dragOffsetX, which must stay confined to draw-phase reads.
-                                val shiftAnim = remember(c.id) { columnShift.getOrPut(c.id) { Animatable(0f, Float.VectorConverter) } }
+                                val shiftAnim = remember(c.id) { columnShift.shiftAnimatable(c.id) }
                                 LaunchedEffect(editable, dragIndex, hoverIndex, animateColumnReorder, columnReorderAnimationMillis) {
                                     val from = dragIndex
                                     if (!editable || from == null || i == from) {
@@ -424,11 +469,11 @@ fun <T> DataGrid(
                                             lineColor = colors.lineColor,
                                             zIndexValue = columnZIndex(i, dragIndex, hoverIndex),
                                             editable = editable,
-                                            dragIndexOf = { dragIndex }, dragOffsetXOf = { dragOffsetX }, shiftValueOf = { shiftAnim.value },
+                                            dragIndexOf = dragIndexOf, dragOffsetXOf = dragOffsetXOf, shiftValueOf = { shiftAnim.value },
                                         )
                                         .then(if (canSort) Modifier.clickable { onSort(c.id) } else Modifier)
                                         .then(
-                                            if (editable && reorder != null) {
+                                            if (editable && currentReorder != null) {
                                                 Modifier.pointerInput(c.id) {
                                                     detectDragGesturesAfterLongPress(
                                                         onDragStart = { dragIndex = currentIndex; dragOffsetX = 0f },
@@ -439,7 +484,7 @@ fun <T> DataGrid(
                                                                     from, dragOffsetX, currentEffective,
                                                                     currentSelectionColumnWidth, this,
                                                                 )
-                                                                if (to != from) reorder(from, to)
+                                                                if (to != from) currentReorder?.invoke(from, to)
                                                             }
                                                             dragIndex = null
                                                             dragOffsetX = 0f
@@ -455,11 +500,9 @@ fun <T> DataGrid(
                                                         // via the sibling-shift math above, other
                                                         // columns reacting to an out-of-range
                                                         // hover) beyond the grid entirely.
-                                                        var leftEdgePx = currentSelectionColumnWidth.toPx()
-                                                        for (k in 0 until from) leftEdgePx += currentEffective[k].toPx()
-                                                        val draggedWidthPx = currentEffective[from].toPx()
-                                                        val totalWidthPx = currentSelectionColumnWidth.toPx() +
-                                                            currentEffective.sumOf { it.toPx().toDouble() }.toFloat()
+                                                        val leftEdgePx = columnLeftEdgePx(from, currentEffective, currentSelectionColumnWidth, this)
+                                                        val draggedWidthPx = with(this) { currentEffective[from].toPx() }
+                                                        val totalWidthPx = columnLeftEdgePx(currentEffective.size, currentEffective, currentSelectionColumnWidth, this)
                                                         val minOffset = currentSelectionColumnWidth.toPx() - leftEdgePx
                                                         val maxOffset = (totalWidthPx - draggedWidthPx) - leftEdgePx
                                                         dragOffsetX = (dragOffsetX + dragAmount.x).coerceIn(minOffset, maxOffset)
@@ -543,19 +586,16 @@ fun <T> DataGrid(
                     // last measures — matches the header's, letting a scroll gesture actually
                     // reach the "+" button; see scrollContentWidth's comment. That's a LAYOUT
                     // concern only, though — what gets PAINTED (the background wash below, the
-                    // bottom line) is deliberately still bounded to totalWidthPx, not this
-                    // Row's own (wider) measured width: painting either past totalWidth would
-                    // extend the filter row's leftover-margin wash and its bottom separator
-                    // line into the "+" button's reserved space, which has no column there to
-                    // own that background/line — it read as a stray colored box + line sitting
-                    // under a button that isn't a real column. The base background here fills
-                    // ONLY the true leftover margin (past the last real column, short of the
-                    // reserved button space) plus the selection-column box below — every DATA
-                    // column paints its own matching background on top of this and carries it
-                    // along during a drag; see columnCell's doc for why that split matters.
+                    // bottom line) is bounded to totalWidthPx, not this Row's own (wider)
+                    // measured width, so the "+" button's reserved space — which has no column
+                    // of its own to own a background/line — stays visually empty. The base
+                    // background here fills the true leftover margin (past the last real
+                    // column, short of the reserved button space) plus the selection-column
+                    // box below; every DATA column paints its own matching background on top
+                    // of this and carries it along during a drag — see columnCell's doc.
                     // Vertical dividers between DATA columns are likewise each column's own
-                    // responsibility now — staticRowLines only draws the bottom separator and
-                    // the (order-independent) selection-column boundary.
+                    // responsibility — staticRowLines only draws the bottom separator and the
+                    // (order-independent) selection-column boundary.
                     Modifier.horizontalScroll(hScroll).width(scrollContentWidth)
                         .drawBehind { drawRect(colors.filterContainerColor, size = Size(totalWidthPx, size.height)) }
                         .height(FILTER_ROW_HEIGHT)
@@ -570,45 +610,44 @@ fun <T> DataGrid(
                         // sit still (visually disconnected) while the row above and below it
                         // are mid-reorder. Reads the SAME Animatable the header loop drives
                         // (see `columnShift`'s doc), not an independent animation of its own.
-                        val shiftAnim = columnShift.getOrPut(c.id) { Animatable(0f, Float.VectorConverter) }
-                        // Transparent for every filter cell EXCEPT the one actively being
-                        // dragged. All filter cells otherwise share the SAME uniform
-                        // filterContainerColor wash this parent Row already paints once (see
-                        // its .background(colors.filterContainerColor) above) — none of them
-                        // ever differs from its neighbor's, so a static (non-dragging) cell has
-                        // nothing of its own worth carrying; painting one anyway just doubled
-                        // that wash into a visibly stronger, blockier gray, most obvious as a
-                        // "halo" around ChoiceFilterCell's unfilled border box (it paints no
-                        // background of its own, just a border).
+                        val shiftAnim = remember(c.id) { columnShift.shiftAnimatable(c.id) }
+                        // Transparent for every filter cell except the one actively being
+                        // dragged. All filter cells share the SAME uniform filterContainerColor
+                        // wash this parent Row already paints once above; none of them ever
+                        // differs from its neighbor's, so a static (non-dragging) cell has
+                        // nothing of its own worth carrying — painting one anyway would just
+                        // double that wash into a visibly stronger, blockier gray.
                         //
-                        // The ACTIVELY DRAGGED cell is different: its translationX moves its
-                        // content away from the row's static wash, which never moves (it's one
-                        // shared layer, painted once, at a fixed position) — so relying on that
-                        // wash for the dragged cell specifically is exactly what left a gray
-                        // trace at its original slot and nothing matching at the position it
-                        // actually dragged to. Only this one cell needs (and gets) its own
-                        // opaque backing that travels WITH it, via the same graphicsLayer
-                        // translation as everything else it carries along.
+                        // The actively dragged cell is different: its translationX moves its
+                        // content away from the row's static wash, which never moves (one
+                        // shared layer, painted once, at a fixed position) — so only this one
+                        // cell needs (and gets) its own opaque backing that travels WITH it,
+                        // via the same graphicsLayer translation as everything else it carries.
                         val opaqueFilterColor = colors.filterContainerColor.compositeOver(colors.containerColor)
                         val filterDragging = editable && dragIndex == i
                         // fillMaxHeight so this cell matches the full FILTER_ROW_HEIGHT, not
-                        // just its own content height — same reasoning as the body cell fix.
+                        // just its own content height.
                         val filterCellModifier = Modifier.width(effective[i]).fillMaxHeight().columnCell(
                             i,
                             backgroundColor = if (filterDragging) opaqueFilterColor else Color.Transparent,
                             lineColor = colors.lineColor,
                             zIndexValue = columnZIndex(i, dragIndex, hoverIndex),
                             editable = editable,
-                            dragIndexOf = { dragIndex }, dragOffsetXOf = { dragOffsetX }, shiftValueOf = { shiftAnim.value },
+                            dragIndexOf = dragIndexOf, dragOffsetXOf = dragOffsetXOf, shiftValueOf = { shiftAnim.value },
                         )
-                        when (val f = c.filter) {
-                            is ExcelComposeFilter.NoFilter -> Box(filterCellModifier)
+                        val f = c.filter
+                        Box(
+                            filterCellModifier.then(
+                                if (f is ExcelComposeFilter.NoFilter) Modifier else Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            ),
+                        ) {
+                            when (f) {
+                                is ExcelComposeFilter.NoFilter -> Unit
 
-                            is ExcelComposeFilter.TextFilter -> Box(filterCellModifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
-                                Row(
+                                is ExcelComposeFilter.TextFilter -> Row(
                                     Modifier.fillMaxWidth()
-                                        .border(1.dp, colors.filterBorderColor, RoundedCornerShape(4.dp))
-                                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
+                                        .border(1.dp, colors.filterBorderColor, FilterCellShape)
+                                        .background(MaterialTheme.colorScheme.surface, FilterCellShape)
                                         .padding(horizontal = 6.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -624,18 +663,14 @@ fun <T> DataGrid(
                                     )
                                     filterTrailingIcon()
                                 }
-                            }
 
-                            is ExcelComposeFilter.ChoiceFilter -> Box(filterCellModifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
-                                ChoiceFilterCell(filters[c.id].orEmpty(), f.options, colors.filterBorderColor) { v -> onFilter(c.id, v) }
-                            }
+                                is ExcelComposeFilter.ChoiceFilter ->
+                                    ChoiceFilterCell(filters[c.id].orEmpty(), f.options, colors.filterBorderColor) { v -> onFilter(c.id, v) }
 
-                            is ExcelComposeFilter.MultiChoiceFilter -> Box(filterCellModifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
-                                MultiChoiceFilterCell(filters[c.id].orEmpty(), f.options, f.allLabel, colors.filterBorderColor) { v -> onFilter(c.id, v) }
-                            }
+                                is ExcelComposeFilter.MultiChoiceFilter ->
+                                    MultiChoiceFilterCell(filters[c.id].orEmpty(), f.options, f.allLabel, colors.filterBorderColor) { v -> onFilter(c.id, v) }
 
-                            is ExcelComposeFilter.CustomFilter -> Box(filterCellModifier.padding(horizontal = 6.dp, vertical = 3.dp)) {
-                                f.content(filters[c.id].orEmpty()) { v -> onFilter(c.id, v) }
+                                is ExcelComposeFilter.CustomFilter -> f.content(filters[c.id].orEmpty()) { v -> onFilter(c.id, v) }
                             }
                         }
                     }
@@ -643,7 +678,33 @@ fun <T> DataGrid(
             }
 
             // body
+            // Right-clicked row/cell (desktop only — see the per-cell pointerInput below for
+            // why this lives here instead of a plain local val), read by GridContextMenuItems
+            // just below to build "Copy cell"/"Copy row" — reading it happens lazily, only
+            // once the context menu is actually opened, so writing it on a right-click never
+            // recomposes anything (nothing reads it during ordinary composition).
+            var contextMenuRow by remember { mutableStateOf<T?>(null) }
+            var contextMenuCellText by remember { mutableStateOf<String?>(null) }
+            val clipboard = LocalClipboardManager.current
             Box(Modifier.weight(1f).fillMaxWidth()) {
+                GridContextMenuItems(
+                    items = {
+                        buildList {
+                            val cellText = contextMenuCellText
+                            if (copyCellLabel != null && cellText != null) {
+                                add(copyCellLabel to { clipboard.setText(AnnotatedString(cellText)) })
+                            }
+                            val target = contextMenuRow
+                            if (copyRowLabel != null && target != null) {
+                                add(copyRowLabel to { clipboard.setText(AnnotatedString(copyableRowsText(columns, listOf(target)))) })
+                            }
+                            val selectedRows = rows.filter { key(it) in selectedKeys }
+                            if (copySelectedRowsLabel != null && selectable && selectedRows.isNotEmpty()) {
+                                add(copySelectedRowsLabel to { clipboard.setText(AnnotatedString(copyableRowsText(columns, selectedRows))) })
+                            }
+                        }
+                    },
+                ) {
                 SelectionContainer {
                     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                         items(rows, key = key) { row ->
@@ -657,58 +718,57 @@ fun <T> DataGrid(
                                 else -> colors.rowContainerColor
                             }
                             val rowAlpha = if (dimmed) 0.55f else 1f
+
+                            // rememberUpdatedState so rowTapGestures' pointerInput below can be
+                            // keyed on the tap-timing flags alone (see its own doc) instead of
+                            // on these callback lambdas, which are fresh instances every
+                            // recomposition — keying on them would restart the gesture-
+                            // detection coroutine (and risk dropping a tap mid-gesture) on
+                            // every unrelated recomposition of this row.
+                            val onTap = rememberUpdatedState<() -> Unit> {
+                                when {
+                                    openOnSingleTap -> onRowOpen(row)
+                                    selectable -> onSelect(key(row))
+                                }
+                                onRowTap?.invoke(row, false)
+                            }
+                            val onDoubleTap = rememberUpdatedState<() -> Unit> {
+                                onRowOpen(row)
+                                onRowTap?.invoke(row, true)
+                            }
+
                             Row(
-                                // Same reasoning as the filter row: scrollContentWidth (not
-                                // totalWidth) so this row's own hScroll usage agrees with the
-                                // header's on how far there is to scroll. Base background/
-                                // static lines same split as the filter row — see its comment
-                                // and columnCell's doc: every DATA column below paints its own
-                                // matching background + boundary line and carries them along
-                                // during a drag; this only fills the selection-column box and
-                                // the trailing margin past the last real column.
+                                // scrollContentWidth (not totalWidth) so this row's own hScroll
+                                // usage agrees with the header's on how far there is to scroll —
+                                // see the filter row's comment. Base line-drawing here is bounded
+                                // to totalWidthPx for the same reason: every DATA column below
+                                // paints its own matching background + boundary line and carries
+                                // them along during a drag (see columnCell's doc); this Row only
+                                // draws the order-independent bottom/selection-column lines.
                                 //
-                                // Dimming is baked directly into this rect's color (rowAlpha),
-                                // NOT via a Modifier.alpha() wrapping this Row and its children
-                                // — see columnCell's doc on contentAlpha for why: alpha < 1f
-                                // forces an offscreen compositing layer, and wrapping one
-                                // around MULTIPLE independently-translating sibling cells at
-                                // once is what let their overlap during a reorder drag show
-                                // through instead of painting over correctly like a fully
-                                // opaque row does. Each cell dims itself instead (below).
+                                // Dimming is baked directly into each cell's own background color
+                                // (rowAlpha, applied per-cell below inside columnCell), never via
+                                // a Modifier.alpha() wrapping this whole Row — see columnCell's
+                                // doc on contentAlpha for why an alpha<1 layer spanning multiple
+                                // independently-translating sibling cells breaks during a drag.
                                 //
-                                // No rect painted here at all anymore for the row's own tint —
-                                // every cell (dragged or static) already paints its OWN
-                                // rowBackground-colored square on top of this; whatever slot no
-                                // cell currently covers (the trailing margin, and — mid-drag —
-                                // the gap the dragged column is actively vacating before a
-                                // sibling's shift animation catches up to fill it) now shows
-                                // through to whatever is structurally behind this Row instead
-                                // (the LazyColumn → the body Box → the grid's own
-                                // colors.containerColor) rather than an explicitly-painted
-                                // stand-in color.
+                                // No rect painted here at all for the row's own tint — every
+                                // cell (dragged or static) already paints its own rowBackground-
+                                // colored square on top of this; whatever slot no cell currently
+                                // covers (the trailing margin, and — mid-drag — the gap the
+                                // dragged column is vacating before a sibling's shift animation
+                                // catches up) shows through to whatever is structurally behind
+                                // this Row (the grid's own colors.containerColor) instead.
                                 Modifier.horizontalScroll(hScroll).width(scrollContentWidth).height(ROW_HEIGHT)
                                     .drawBehind {
-                                        // Bounded to totalWidthPx, not this Row's own (wider)
-                                        // measured width — see the filter row's comment above on
-                                        // why scrollContentWidth is a layout-only concern and
-                                        // painting must stop at the real last column.
                                         staticRowLines(colors.lineColor, selectionColumnWidth, totalWidthPx)
                                     }
                                     .rowTapGestures(
                                         singleTapEnabled = singleTapEnabled,
                                         doubleTapEnabled = doubleTapEnabled,
                                         doubleTapTimeoutMillis = doubleTapTimeoutMillis,
-                                        onTap = {
-                                            when {
-                                                openOnSingleTap -> onRowOpen(row)
-                                                selectable -> onSelect(key(row))
-                                            }
-                                            onRowTap?.invoke(row, false)
-                                        },
-                                        onDoubleTap = {
-                                            onRowOpen(row)
-                                            onRowTap?.invoke(row, true)
-                                        },
+                                        onTap = onTap,
+                                        onDoubleTap = onDoubleTap,
                                     ),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
@@ -731,34 +791,25 @@ fun <T> DataGrid(
                                     // displaced cell in a tinted row doesn't flash a mismatched
                                     // color), own boundary line, own reorder-drag translation.
                                     // Reads the SAME Animatable the header loop drives.
-                                    val shiftAnim = columnShift.getOrPut(c.id) { Animatable(0f, Float.VectorConverter) }
-                                    // rowBackground can itself be semi-transparent (dimmed rows
-                                    // use filterContainerColor, 0.6 alpha by design — see
-                                    // GridColors.kt) — stacked with contentAlpha below (0.55 for
-                                    // a dimmed row) that compounds to a near-invisible ~0.33,
-                                    // which is exactly what read as "gray rows' dragged column
-                                    // loses the z-order fight": not actually a stacking bug,
-                                    // a cell with barely any opacity left to assert itself with.
-                                    // The dragged cell keeps ITS OWN color (rowBackground) —
-                                    // the same green/gray/white it had before you picked it up
-                                    // — rather than switching to a generic one, so a selected
+                                    val shiftAnim = remember(c.id) { columnShift.shiftAnimatable(c.id) }
+                                    // The dragged cell keeps ITS OWN color (rowBackground) — the
+                                    // same green/gray/white it had before it was picked up —
+                                    // rather than switching to a generic one, so a selected
                                     // (green) row's cell still reads as that row's cell while
-                                    // it's being carried around, not some other row's. It's
-                                    // still exempted from this row's own dimming ALPHA though
-                                    // (contentAlpha stays 1f while dragging, whatever the row):
-                                    // the header cell this is otherwise matching is NEVER
-                                    // dimmed at all, and a translucent dragged cell is what
-                                    // previously let whatever it was passing over show through
-                                    // — full opacity, own color. Dimming resumes once it's
-                                    // dropped back into normal (non-dragged) flow.
+                                    // being carried around. It's exempted from this row's own
+                                    // dimming alpha while dragging (contentAlpha stays 1f): the
+                                    // header cell it's otherwise matching is never dimmed at
+                                    // all. Dimming resumes once it's dropped back into normal
+                                    // (non-dragged) flow.
                                     val draggingThis = editable && dragIndex == i
+                                    val cellText = c.cell.copyText(row)
                                     Box(
-                                        // fillMaxHeight matters here specifically for the
-                                        // border/background added below: without an explicit
+                                        // fillMaxHeight matters here for the border/background
+                                        // painted by columnCell below: without an explicit
                                         // height, this Box only wraps its Text's own (shorter)
                                         // line height, not the full ROW_HEIGHT the Row itself
-                                        // is set to — so a border drawn around it hugs the text
-                                        // vertically instead of matching the full cell.
+                                        // is set to, so a border drawn around it would hug the
+                                        // text vertically instead of matching the full cell.
                                         Modifier.width(effective[i]).fillMaxHeight()
                                             .columnCell(
                                                 i,
@@ -767,8 +818,22 @@ fun <T> DataGrid(
                                                 zIndexValue = columnZIndex(i, dragIndex, hoverIndex),
                                                 editable = editable,
                                                 contentAlpha = if (draggingThis) 1f else rowAlpha,
-                                                dragIndexOf = { dragIndex }, dragOffsetXOf = { dragOffsetX }, shiftValueOf = { shiftAnim.value },
+                                                dragIndexOf = dragIndexOf, dragOffsetXOf = dragOffsetXOf, shiftValueOf = { shiftAnim.value },
                                             )
+                                            // Records which row/cell the context menu wrapping
+                                            // the WHOLE SelectionContainer below should build
+                                            // "Copy cell"/"Copy row" items for. It has to be
+                                            // recorded here, at the actual click point, and read
+                                            // back at an ANCESTOR of SelectionContainer — the
+                                            // platform's own context-menu-opening logic only
+                                            // consults context-menu items provided by ancestors
+                                            // of wherever it's rooted (SelectionContainer's own
+                                            // composition point), not by arbitrary descendants
+                                            // added deeper inside its lazily-composed content.
+                                            .onRightClick(row, cellText) {
+                                                contextMenuRow = row
+                                                contextMenuCellText = cellText
+                                            }
                                             .padding(horizontal = 8.dp),
                                     ) {
                                         when (val cell = c.cell) {
@@ -776,6 +841,18 @@ fun <T> DataGrid(
                                             is ExcelComposeCell.TextCell -> Text(
                                                 cell.value(row),
                                                 style = MaterialTheme.typography.bodySmall,
+                                                // Only overridden while this exact cell is being
+                                                // dragged: contentAlpha above is forced to 1f then
+                                                // (so the cell's own background stays fully opaque
+                                                // instead of fading with the rest of the row),
+                                                // which would otherwise also undo this row's text
+                                                // dimming, since alpha affects the whole cell
+                                                // uniformly. Pre-compositing the same dimmed tone
+                                                // as an explicit color keeps the text gray without
+                                                // depending on alpha.
+                                                color = if (dimmed && draggingThis) {
+                                                    MaterialTheme.colorScheme.onSurface.copy(alpha = rowAlpha).compositeOver(rowBackground)
+                                                } else Color.Unspecified,
                                                 textAlign = c.align,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
@@ -793,6 +870,7 @@ fun <T> DataGrid(
                             }
                         }
                     }
+                }
                 }
 
                 // Compose's own VerticalScrollbar draws a full-track thumb (not nothing) even
@@ -827,31 +905,23 @@ fun <T> DataGrid(
         }
 
         // Single, absolutely-positioned selection outline spanning the header, the filter
-        // row, and every currently visible body row for the dragged column — replaces the
-        // earlier approach of the header/filter/every visible body row cell each drawing its
-        // OWN matching border and relying on them lining up by coincidence of identical
-        // color/inset/position. This is the single source of truth instead: one Box, one
-        // border, computed fresh from the dragged column's current position and the list's
-        // visible extent, declared LAST (after the Column above) so it paints on top of
-        // everything else by plain declaration order — no zIndex needed.
+        // row, and every currently visible body row for the dragged column, instead of the
+        // header/filter/every visible body row cell each drawing its OWN matching border and
+        // relying on them lining up by identical color/inset/position. One Box, one border,
+        // computed fresh from the dragged column's current position and the list's visible
+        // extent, declared LAST (after the Column above) so it paints on top of everything
+        // else by plain declaration order — no zIndex needed.
         //
-        // leftEdgePx is computed from column widths alone — it's an offset WITHIN the
-        // scrollable content, not an on-screen position. Every header/filter/body Row lives
-        // inside its own `.horizontalScroll(hScroll)`, which shifts their painted content
-        // left by hScroll.value as the grid scrolls; this overlay Box is a plain sibling of
-        // that Column, outside any scrolling container, so it must subtract hScroll.value
-        // itself to land on the same on-screen pixel the actual (scrolled) column cells do.
-        // Every earlier test happened to fit the grid without needing to scroll, which is
-        // what hid this: leftEdgePx and true screen position only diverge once hScroll.value
-        // is nonzero, e.g. right after a column is added and the grid no longer fits.
+        // leftEdgePx is an offset WITHIN the scrollable content, not an on-screen position.
+        // Every header/filter/body Row lives inside its own `.horizontalScroll(hScroll)`,
+        // which shifts their painted content left by hScroll.value as the grid scrolls; this
+        // overlay Box is a plain sibling of that Column, outside any scrolling container, so
+        // it must subtract hScroll.value itself to land on the same on-screen pixel the
+        // actual (scrolled) column cells do.
         if (editable) {
             val from = dragIndex
             if (from != null) {
-                val leftEdgePx = with(density) {
-                    var acc = selectionColumnWidth.toPx()
-                    for (k in 0 until from) acc += effective[k].toPx()
-                    acc
-                }
+                val leftEdgePx = columnLeftEdgePx(from, effective, selectionColumnWidth, density)
                 val headerAndFilterHeight = HEADER_HEIGHT + if (filterRowEnabled) FILTER_ROW_HEIGHT else 0.dp
                 // listState.layoutInfo changes every scroll frame — read here (composition
                 // time) only because this whole block is already gated on an active drag, so
@@ -914,9 +984,8 @@ private fun ColumnResizeHandle(
  * Draw order for column [i] during a reorder drag: the grabbed column highest, a sibling
  * currently reflowing to make room for it next, everything untouched at the bottom — so
  * whichever column is actually in visual motion draws on top during the moments cells
- * overlap, instead of falling back to plain declaration order (which is what produced the
- * "shifted column ends up behind the other one" bug). [dragIndex]/[hoverIndex] both change
- * rarely enough (a handful of times per drag, not per pixel) that computing this at
+ * overlap, instead of falling back to plain declaration order. [dragIndex]/[hoverIndex] both
+ * change rarely enough (a handful of times per drag, not per pixel) that computing this at
  * composition time — not deferred to draw-phase like the translation itself — is safe.
  */
 private fun columnZIndex(i: Int, dragIndex: Int?, hoverIndex: Int?): Float {
@@ -991,18 +1060,51 @@ private fun resolveDropTarget(
 }
 
 /**
- * "+" button pinned to the header's top-right corner (see call site for why it's a
- * fixed sibling of the scrolling header, not part of its scrollable content).
+ * On-screen left edge, in px, of the column at [index] (or of the space right after the
+ * last column, when `index == effective.size`) — [effective]'s entries up to (not including)
+ * [index] summed, plus [selectionColumnWidth]. Shared by the reorder drag's clamp, the
+ * selection-overlay border, and (via `index == effective.size`) anywhere the total column
+ * width in px is needed.
  *
- * Keeps its own small rounded background (a self-contained "chip", same as before) but no
- * longer a 4-sided border — the border was what actually read as a stray line poking out:
- * a separate rectangle's own edge sitting right past the last column's clean boundary line,
- * at a slightly different height (this button's 24dp inside the header's 32dp), instead of
- * looking like a continuation of it. The soft background alone still reads as a distinct,
- * clickable chip without drawing a second, competing outline. (An earlier attempt tried
- * extending the whole header strip's background across its full remaining width so the chip
- * would sit on an uninterrupted band — that solved the border clash but smeared grey across
- * the entire rest of the header, well past the button, which looked worse; reverted.)
+ * Example: `columnLeftEdgePx(2, effective, selectionColumnWidth, density)` — the x
+ * coordinate where column index 2 begins.
+ */
+private fun columnLeftEdgePx(index: Int, effective: List<Dp>, selectionColumnWidth: Dp, density: Density): Float =
+    with(density) { selectionColumnWidth.toPx() + effective.take(index).sumOf { it.toPx().toDouble() }.toFloat() }
+
+/** This column's shared shift Animatable, created on first use — see `columnShift`'s doc on [DataGrid]. */
+private fun MutableMap<String, Animatable<Float, AnimationVector1D>>.shiftAnimatable(id: String): Animatable<Float, AnimationVector1D> =
+    getOrPut(id) { Animatable(0f, Float.VectorConverter) }
+
+/**
+ * CSV-ish text for [rows] under [columns] — a heading line ([GridColumn.heading] for every
+ * copyable column), then one comma-separated line per row, each column's
+ * [ExcelComposeCell.copyText]. A column with no copyText at all (an [ExcelComposeCell.
+ * CustomCell] with no `copyValue`) is left out of both the heading and every row's line, so
+ * the two always line up. Backs [DataGrid]'s `copyCellLabel`/`copyRowLabel`/
+ * `copySelectedRowsLabel`.
+ *
+ * Example: `copyableRowsText(columns, listOf(row))` — heading line + that one row's line.
+ */
+private fun <T> copyableRowsText(columns: List<GridColumn<T>>, rows: List<T>): String {
+    val copyableColumns = columns.filter { col ->
+        when (val cell = col.cell) {
+            is ExcelComposeCell.TextCell -> true
+            is ExcelComposeCell.CustomCell -> cell.copyValue != null
+        }
+    }
+    val heading = copyableColumns.joinToString(", ") { it.heading }
+    val lines = rows.map { row -> copyableColumns.joinToString(", ") { col -> col.cell.copyText(row).orEmpty() } }
+    return (listOf(heading) + lines).joinToString("\n")
+}
+
+/**
+ * "+" button pinned to the header's top-right corner (see call site for why it's a
+ * fixed sibling of the scrolling header, not part of its scrollable content). A small
+ * rounded background chip, deliberately without its own border — a border here would sit
+ * as a separate rectangle past the last column's own boundary line, at a slightly
+ * different height (this button's 24dp inside the header's 32dp) than the header's clean
+ * row line, rather than reading as a continuation of it.
  */
 @Composable
 private fun AddColumnButton(onClick: () -> Unit, colors: ExcelGridColors, modifier: Modifier = Modifier) {
@@ -1010,7 +1112,7 @@ private fun AddColumnButton(onClick: () -> Unit, colors: ExcelGridColors, modifi
         modifier
             .padding(start = 4.dp)
             .size(24.dp)
-            .background(colors.headerContainerColor, RoundedCornerShape(4.dp))
+            .background(colors.headerContainerColor, FilterCellShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -1033,34 +1135,40 @@ private fun AddColumnButton(onClick: () -> Unit, colors: ExcelGridColors, modifi
  *   (instead, not in addition) the moment a second tap-up completes inside it. This is the
  *   one combination that pays real latency, because it's the one case where a click is
  *   genuinely ambiguous until proven otherwise.
+ *
+ * [onTap]/[onDoubleTap] are [State] (pass `rememberUpdatedState { ... }` at the call site),
+ * not plain lambdas — the underlying `pointerInput` key list only includes the tap-timing
+ * flags, which rarely change, so the long-lived gesture-detection coroutine survives
+ * ordinary recompositions instead of restarting (and risking a dropped mid-gesture tap)
+ * every time the caller passes a structurally-fresh lambda.
  */
 private fun Modifier.rowTapGestures(
     singleTapEnabled: Boolean,
     doubleTapEnabled: Boolean,
     doubleTapTimeoutMillis: Long,
-    onTap: () -> Unit,
-    onDoubleTap: () -> Unit,
+    onTap: State<() -> Unit>,
+    onDoubleTap: State<() -> Unit>,
 ): Modifier {
     if (!singleTapEnabled && !doubleTapEnabled) return this
-    return pointerInput(singleTapEnabled, doubleTapEnabled, doubleTapTimeoutMillis, onTap, onDoubleTap) {
+    return pointerInput(singleTapEnabled, doubleTapEnabled, doubleTapTimeoutMillis) {
         awaitEachGesture {
             awaitFirstDown()
             if (waitForUpOrCancellation() == null) return@awaitEachGesture // drag/scroll, not a tap
 
             if (!doubleTapEnabled) {
-                onTap()
+                onTap.value()
                 return@awaitEachGesture
             }
 
             val secondDown = withTimeoutOrNull(doubleTapTimeoutMillis) { awaitFirstDown() }
             if (secondDown == null) {
-                if (singleTapEnabled) onTap() // window passed with no second tap: a genuine single
+                if (singleTapEnabled) onTap.value() // window passed with no second tap: a genuine single
                 return@awaitEachGesture
             }
             if (waitForUpOrCancellation() != null) {
-                onDoubleTap()
+                onDoubleTap.value()
             } else if (singleTapEnabled) {
-                onTap() // second press turned into a drag — fall back to treating the first as a single
+                onTap.value() // second press turned into a drag — fall back to treating the first as a single
             }
         }
     }
@@ -1091,9 +1199,11 @@ private fun FilterGlyph(tint: Color, modifier: Modifier = Modifier) {
 /**
  * Bottom row separator + (if selectable) the line right after the selection column — the
  * ONLY grid lines drawn once, shared, by a parent Row. Neither depends on DATA column order,
- * unlike the border between two data columns, which is now each column's OWN responsibility
- * (see [columnCell]) so it moves WITH the column during a reorder drag instead of staying
- * frozen at a static position while the column itself visibly moves away from it.
+ * unlike the border between two data columns, which is each column's OWN responsibility
+ * (see [columnCell]) so it moves WITH the column during a reorder drag. [lineWidthPx]
+ * defaults to this DrawScope's own width, but a caller whose Row is measured wider than its
+ * real columns (the "+" button's reserved scroll space) passes the narrower, real width
+ * explicitly so the line doesn't extend into that empty space.
  */
 private fun DrawScope.staticRowLines(color: Color, selectionColumnWidth: Dp, lineWidthPx: Float = size.width) {
     val thickness = 1.dp.toPx()
@@ -1107,27 +1217,15 @@ private fun DrawScope.staticRowLines(color: Color, selectionColumnWidth: Dp, lin
 
 /**
  * The full self-contained visual for ONE data-column cell — background, its own right-edge
- * divider line, and (only when [editable]) the reorder-drag translation — used identically
- * for a column's header cell, its filter cell, and every visible body row's cell.
- *
- * This is the fix for a class of bug ("two backgrounds while sliding", a shifted column
- * ending up visually behind another, a dragged column's backing outliving the drag) that
- * kept recurring across earlier attempts: every previous version had ONE shared background/
- * gridline layer painted ONCE, unconditionally, by the parent Row — completely static, never
- * reflecting which column was actually where — with individual cells SEPARATELY, sometimes
- * conditionally, painting a second, MOVING layer on top of it. `graphicsLayer` only affects
- * the draw phase — it never changes layout, hit-testing, or z-order — so a translated cell's
- * paint could only ever be an extra, independent layer stacked over a parent's background
- * that had no idea anything moved, not a replacement for it. Two independent sources of
- * truth for "what's drawn here" is exactly what produced every symptom in that list. The
- * fix, confirmed against how other frameworks' reorder implementations handle this (each
- * item paints its OWN appearance from its OWN state, never a shared container painting once
- * for everyone): every column now ALWAYS paints its own background and its own boundary
- * line, unconditionally, whether anything is being dragged or not — there is only ever ONE
- * thing drawn at any given screen position, so there is nothing left for a second layer to
- * duplicate or fall out of sync with. When nothing is dragging this looks pixel-identical to
- * the old shared-background rendering; the difference only shows up mid-drag, where it's now
- * correct instead of two overlapping half-truths.
+ * and bottom-edge divider lines, and (only when [editable]) the reorder-drag translation —
+ * used identically for a column's header cell, its filter cell, and every visible body row's
+ * cell. Every column always paints its own background and boundary lines, unconditionally,
+ * whether anything is being dragged or not: there is only ever ONE thing drawn at any given
+ * screen position, with nothing left for a second, shared layer to fall out of sync with.
+ * `graphicsLayer` (used for the drag translation below) only affects the draw phase — never
+ * layout, hit-testing, or z-order — so a translated cell's paint is always an ADDITIONAL
+ * layer on top of whatever else occupies that screen position; owning the background here
+ * per-cell is what keeps that additional layer the only thing drawn there.
  *
  * [zIndexValue] should rank higher for the actively-dragged column, a bit lower for a
  * sibling currently reflowing to make room for it, and 0 for anything untouched — so
@@ -1135,28 +1233,28 @@ private fun DrawScope.staticRowLines(color: Color, selectionColumnWidth: Dp, lin
  * overlap, instead of falling back to plain declaration order.
  *
  * [contentAlpha] (e.g. for a dimmed row) is applied HERE, per cell, inside the SAME
- * graphicsLayer that sets `translationX` — never as a separate outer `Modifier.alpha()` —
- * rather than by the caller wrapping the whole ROW in one. Both distinctions matter:
- * `alpha < 1f` forces Compose to render its subtree into an offscreen layer before
- * compositing it, and (1) when that subtree spans MULTIPLE sibling cells that independently
- * translate via their own nested graphicsLayer (mid reorder-drag), overlap between them that
- * a fully-opaque row would simply paint over correctly becomes visible instead — scoping
- * alpha to one cell at a time avoids ever building a shared offscreen layer across
- * overlapping siblings in the first place; and (2) even scoped to one cell, an alpha<1f
- * layer sitting OUTSIDE (wrapping) a translating one is sized and positioned to this cell's
+ * graphicsLayer that sets `translationX` — never as a separate outer `Modifier.alpha()`.
+ * Two reasons: (1) `alpha < 1f` forces Compose to render its subtree into an offscreen
+ * layer before compositing it, and if that subtree spanned MULTIPLE sibling cells that
+ * independently translate via their own nested graphicsLayer (mid reorder-drag), overlap
+ * between them that a fully-opaque row would simply paint over correctly would become
+ * visible instead — scoping alpha to one cell at a time avoids ever building a shared
+ * offscreen layer across overlapping siblings. (2) Even scoped to one cell, an alpha<1f
+ * layer sitting OUTSIDE (wrapping) a translating one is sized and positioned to that cell's
  * OWN, ORIGINAL (untranslated) bounds — its offscreen buffer has no idea the inner layer
- * moves at all, so any part of the translated content that lands outside those original
- * bounds is silently clipped there instead of painted, revealing whatever's behind. That's
- * exactly what a dimmed row's SLIDING (reflowing, non-dragged) sibling cell does every
- * reorder — which is what read as "the sliding ones' gray rows end up behind a white
- * background." One graphicsLayer, alpha and translationX set together, has no such seam:
- * translation moves where the whole (already-dimmed) layer paints, so nothing about it is
- * bounds-clipped by itself.
+ * moves at all, so any part of the translated content landing outside those original bounds
+ * is silently clipped there instead of painted. One graphicsLayer, alpha and translationX
+ * set together, has no such seam: translation moves where the whole (already-dimmed) layer
+ * paints, so nothing about it is bounds-clipped by itself.
  *
  * [dragIndexOf]/[dragOffsetXOf]/[shiftValueOf] are lambdas so the state reads they wrap
  * happen INSIDE the graphicsLayer draw-phase block, not at this function's call site —
  * reading them eagerly here would subscribe the enclosing composable to every pixel of drag
  * movement or every animation frame, recomposing instead of just redrawing one layer.
+ *
+ * Example: `Modifier.width(colWidth).columnCell(i, rowBackground, lineColor, zIndex,
+ * editable = true, dragIndexOf = { dragIndex }, dragOffsetXOf = { dragOffsetX },
+ * shiftValueOf = { shiftAnim.value })`.
  */
 private fun Modifier.columnCell(
     i: Int,
@@ -1176,21 +1274,17 @@ private fun Modifier.columnCell(
     .zIndex(zIndexValue)
     .graphicsLayer {
         // alpha lives HERE, alongside translationX, in this one layer — see the doc above on
-        // why a separate outer Modifier.alpha() silently clips a sliding, dimmed sibling cell
-        // instead of drawing it.
+        // why a separate outer Modifier.alpha() would clip a translated cell instead of
+        // drawing it.
         this.alpha = contentAlpha
         if (editable) {
             val from = dragIndexOf()
             if (i == from) {
                 translationX = dragOffsetXOf()
-                // shadowElevation on a graphicsLayer needs an explicit shape + clip=true
-                // to composite correctly with whatever's drawn after it in the chain —
-                // without this, the background painted below was rendering unreliably
-                // alongside the shadow (sometimes not at all), which is exactly what read
-                // as "shadow with nothing solid behind it" / the dragged column losing a
-                // z-order fight it should have won: a cell with no visible opaque backing
-                // reads as "behind" a fully-opaque static neighbor even when it's
-                // technically drawn on top.
+                // shadowElevation on a graphicsLayer needs an explicit shape + clip=true to
+                // composite correctly with whatever's drawn after it in the chain (the
+                // background below) — without both, the shadow can render with no solid
+                // backing under it.
                 shadowElevation = 4.dp.toPx()
                 shape = RectangleShape
                 clip = true
@@ -1202,13 +1296,11 @@ private fun Modifier.columnCell(
     .background(backgroundColor)
     .drawBehind {
         // Right AND bottom edge, both drawn here (after — i.e. on top of — this SAME cell's
-        // own .background() above), not by a shared row-level pass: every cell now always
-        // paints its own opaque background covering its full bounds, which silently hides
-        // any grid line drawn underneath by a parent Row before the cells are drawn as its
-        // children. That's what made the bottom divider inconsistent — fully invisible under
-        // an opaque (normal) row's cells, faintly visible only where a cell's own alpha < 1
-        // (a dimmed row) let the parent's line show through. Owning both edges here removes
-        // the ambiguity: there is nothing left underneath for a cell to accidentally cover.
+        // own .background() above), not by a shared row-level pass: every cell paints its own
+        // opaque background covering its full bounds, which would otherwise hide any grid
+        // line a parent Row tried to draw underneath before its children paint over it.
+        // Owning both edges here means there's nothing underneath for a cell to accidentally
+        // cover.
         val thickness = 1.dp.toPx()
         drawLine(lineColor, Offset(size.width, 0f), Offset(size.width, size.height), thickness)
         val y = size.height - thickness / 2f

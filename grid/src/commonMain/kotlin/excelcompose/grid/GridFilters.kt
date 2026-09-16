@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
+private val FilterCellShape = RoundedCornerShape(4.dp)
+
 /**
  * Single-choice filter dropdown for the filter row. [options] are (value, label) pairs;
  * the first option means "all" and carries an empty-string value.
@@ -40,7 +42,7 @@ fun ChoiceFilterCell(
     Box {
         Row(
             Modifier.fillMaxWidth()
-                .border(1.dp, borderColor, RoundedCornerShape(4.dp))
+                .border(1.dp, borderColor, FilterCellShape)
                 .clickable { open = true }
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -81,7 +83,7 @@ fun MultiChoiceFilterCell(
     Box {
         Row(
             Modifier.fillMaxWidth()
-                .border(1.dp, borderColor, RoundedCornerShape(4.dp))
+                .border(1.dp, borderColor, FilterCellShape)
                 .clickable { open = true }
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,

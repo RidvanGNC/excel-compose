@@ -1,12 +1,14 @@
 package excelcompose.grid
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 
 /**
  * What a column's filter-row box looks like. A typed, discoverable alternative to a loose
  * `filterable: Boolean` + nullable `@Composable` lambda pair — pick a named case instead of
  * wiring the composable yourself, unless you need [CustomFilter].
  */
+@Immutable
 sealed interface ExcelComposeFilter {
     /** No box at all for this column — the filter row just leaves its width empty. */
     data object NoFilter : ExcelComposeFilter

@@ -22,7 +22,12 @@ data class GridColumn<T>(
     /** Clicking the header sorts by this column (ascending/descending). */
     val sortable: Boolean = false,
     val align: TextAlign = TextAlign.Start,
-)
+) {
+    /** Anchors [dynamic] (see `DynamicGridColumn.kt`) — a factory for a grid whose columns
+     * are defined at runtime (a [ColumnDataType] per column) rather than this file's own
+     * compile-time-typed `GridColumn<T>`. */
+    companion object
+}
 
 /** Convenience for the common case — a column that just renders plain text. */
 fun <T> GridColumn(
